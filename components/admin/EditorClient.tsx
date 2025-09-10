@@ -9,7 +9,7 @@ import { useDropzone } from 'react-dropzone';
 import toast from 'react-hot-toast';
 import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
-
+import Image from 'next/image';
 import { PAGES, PageKey } from '@/types/constants/pages';
 import type { ArticleDoc, Locale } from '@/types/core/article';
 
@@ -206,18 +206,25 @@ export default function EditorClient({ locale }: { locale: Locale }) {
           ? 'Kliknij lub upuść zdjęcie'
           : 'Click or drop cover image'}
       </div>
-      {coverUrl && (
-        <div className="relative inline-block">
-          <img src={coverUrl} alt="cover" className="mt-2 max-h-48 rounded shadow object-cover" />
-          <button
-            type="button"
-            onClick={removeCover}
-            className="absolute top-2 right-2 bg-black/60 text-white text-xs px-2 py-1 rounded"
-          >
-            {locale === 'pl' ? 'Usuń' : 'Remove'}
-          </button>
-        </div>
-      )}
+{coverUrl && (
+  <div className="relative inline-block">
+    <Image
+      src={coverUrl}
+      alt="cover"
+      width={768}                 // اختر قيماً معقولة
+      height={384}
+      className="mt-2 h-48 w-auto rounded shadow object-cover"
+    />
+    <button
+      type="button"
+      onClick={removeCover}
+      className="absolute top-2 right-2 bg-black/60 text-white text-xs px-2 py-1 rounded"
+    >
+      {locale === 'pl' ? 'Usuń' : 'Remove'}
+    </button>
+  </div>
+)}
+
 
       {/* الصفحة والفئة */}
       <div className="grid md:grid-cols-2 gap-4">
