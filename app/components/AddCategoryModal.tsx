@@ -109,9 +109,12 @@ const submit = async (data: FormData) => {
     toast.success(t.saved);                // ✅ إشعار أخضر
     onCreated(json as Category);           // إضافة مباشرةً للجدول
     setOpen(false);
-  } catch (err: any) {
-    toast.error(`${t.err}: ${err.message}`); // ❌ إشعار أحمر
-  } finally {
+  } catch (err: unknown) {
+  const message =
+    err instanceof Error ? err.message : String(err);
+
+  toast.error(`${t.err}: ${message}`); // ❌ إشعار أحمر
+} finally {
     setSaving(false);
   }
 };

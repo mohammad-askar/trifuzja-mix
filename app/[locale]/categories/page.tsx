@@ -1,11 +1,9 @@
 // 📁 app/[locale]/categories/page.tsx
-// صفحة عرض جميع التصنيفات (Categories) مع رقاقات الفلترة
-
 import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
 import clientPromise from '@/types/mongodb';
+import type { ObjectId } from 'mongodb';   // ⬅️ أضِف هذا
 
-// ✅ المسار الصحيح لمكوّن الـ Chips
 import CategoryChips from '@/app/components/CategoryChips';
 
 type Locale = 'en' | 'pl';
@@ -15,18 +13,10 @@ interface Category {
   name: { en: string; pl: string };
 }
 
-/* ------------------ 1.  Metadata ------------------ */
-export async function generateMetadata({
-  params,
-}: {
-  params: { locale: Locale };
-}): Promise<Metadata> {
-  return {
-    title: params.locale === 'pl' ? 'Kategorie' : 'Categories',
-  };
+export async function generateMetadata({ params }: { params: { locale: Locale } }): Promise<Metadata> {
+  return { title: params.locale === 'pl' ? 'Kategorie' : 'Categories' };
 }
 
-/* ------------------ 2.  الصفحة الرئيسية ------------------ */
 export default async function PublicCatsPage({
   params,
   searchParams,
@@ -36,29 +26,29 @@ export default async function PublicCatsPage({
 }) {
   const { locale } = params;
 
-  /* ---------- جلب التصنيفات من MongoDB ---------- */
   let categories: Category[] = [];
   try {
-    const client   = await clientPromise;
-    const db       = client.db();
+    const client = await clientPromise;
+    const db = client.db();
+
+    // ✅ عرّف _id كـ ObjectId
     const docs = await db
-      .collection<{ _id: any; name: { en: string; pl: string } }>('categories')
+      .collection<{ _id: ObjectId; name: { en: string; pl: string } }>('categories')
       .find()
       .sort({ 'name.en': 1 })
       .toArray();
 
     if (!docs.length) notFound();
 
-    categories = docs.map((d) => ({
-      _id:  d._id.toString(),
+    categories = docs.map(d => ({
+      _id: d._id.toHexString(), // ✅ بدّل toString() إلى toHexString()
       name: d.name,
     }));
   } catch (e) {
     console.error('⚠️  MongoDB error (categories page):', e);
-    notFound();           // أو أعد صفحة خطأ مخصصة حسب رغبتك
+    notFound();
   }
 
-  /* ---------- تجهيز الفئات المختارة من ?cat= ---------- */
   const raw = searchParams?.cat;
   const selected: string[] = Array.isArray(raw) ? raw : raw ? [raw] : [];
 
@@ -68,12 +58,7 @@ export default async function PublicCatsPage({
         {locale === 'pl' ? 'Kategorie' : 'Categories'}
       </h1>
 
-      {/* ✅ رقاقات التصنيفات */}
-      <CategoryChips
-        categories={categories}
-        selected={selected}
-        locale={locale}
-      />
+      <CategoryChips categories={categories} selected={selected} locale={locale} />
     </main>
   );
 }

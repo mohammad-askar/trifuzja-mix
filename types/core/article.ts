@@ -233,7 +233,7 @@ export interface ArticleSeoPayload {
  * -------------------------------------------------- */
 export interface ArticleEditable {
   slug: string;
-  meta?: Record<string, any>;
+meta?: Record<string, unknown>;
   scheduledFor?: string;
   thumbnailUrl?: string;
   title: Record<Locale, string>;

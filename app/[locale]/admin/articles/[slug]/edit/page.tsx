@@ -29,13 +29,30 @@ interface RouteParams extends Record<string, string> {
 }
 
 function pickStringLocale(
-  value: string | Record<string, string> | undefined,
+  value: unknown,
   loc: string,
 ): string | undefined {
   if (!value) return undefined;
+
+  // لو كانت قيمة بسيطة
   if (typeof value === 'string') return value;
-  return value[loc] || value['en'] || Object.values(value)[0];
+
+  // لو كانت كائن ممكن يحتوي قيماً مترجمة
+  if (typeof value === 'object') {
+    const rec = value as Record<string, unknown>;
+
+    const get = (k: string) => {
+      const v = rec[k];
+      return typeof v === 'string' ? v : undefined;
+    };
+
+    // ترتيب الأولويات: اللغة المطلوبة -> en -> أول قيمة string موجودة
+    return get(loc) ?? get('en') ?? (Object.values(rec).find(v => typeof v === 'string') as string | undefined);
+  }
+
+  return undefined;
 }
+
 
 
 function toLocaleRecord(value: string | Record<string, string> | undefined): Record<'en' | 'pl', string> {
@@ -65,10 +82,10 @@ function normalize(api: ArticleFromApi, loc: Locale): ArticleEditable {
       ? api.status
       : 'draft';
 
-  const description =
-    pickStringLocale(api.excerpt, loc) ||
-    pickStringLocale(api.meta?.description as any, loc) ||
-    undefined;
+const description =
+  pickStringLocale(api.excerpt, loc) ||
+  pickStringLocale(api.meta?.description, loc) ||
+  undefined;
 
   const contentHtml =
     typeof api.contentHtml === 'string'

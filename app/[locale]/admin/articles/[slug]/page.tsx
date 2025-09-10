@@ -47,6 +47,9 @@ function toLocaleRecord(value: string | Record<string, string> | undefined): Rec
     pl: value?.pl || '',
   };
 }
+function isDraftOrPublished(s: unknown): s is 'draft' | 'published' {
+  return s === 'draft' || s === 'published';
+}
 
 function normalize(api: ArticleFromApi, loc: Locale): ArticleEditable {
   if (!api.slug) throw new Error('Article payload missing slug');
@@ -58,10 +61,9 @@ function normalize(api: ArticleFromApi, loc: Locale): ArticleEditable {
       : 'blog');
 
   // ضبط حالة المقال فقط على draft أو published
-  const validStatuses = ['draft', 'published'] as const;
-  const status: ArticleStatus = validStatuses.includes(api.status as any)
-    ? (api.status as ArticleStatus)
-    : 'draft';
+const status: ArticleStatus = isDraftOrPublished(api.status)
+  ? api.status
+  : 'draft';
 
   const title = toLocaleRecord(api.title || api.slug);
 

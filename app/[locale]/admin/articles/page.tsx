@@ -57,10 +57,17 @@ function buildFilter(q: string, pageKey?: string, status?: string): Filter<RawRo
 
   if (q.trim()) {
     const rx = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-    (f as any).$or = [{ slug: rx }, { 'title.en': rx }, { 'title.pl': rx }];
+
+    // بدون any:
+    (f as Filter<RawRow> & { $or?: Filter<RawRow>[] }).$or = [
+      { slug: rx },
+      { ['title.en']: rx } as unknown as Filter<RawRow>,
+      { ['title.pl']: rx } as unknown as Filter<RawRow>,
+    ];
   }
   return f;
 }
+
 
 function mapRows(raw: WithId<RawRow>[], locale: Locale): Row[] {
   return raw.map(r => ({
