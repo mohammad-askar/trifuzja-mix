@@ -8,7 +8,7 @@ import { Swiper, SwiperSlide } from 'swiper/react';
 import { Pagination, Autoplay } from 'swiper/modules';
 import 'swiper/css';
 import 'swiper/css/pagination';
-
+import Image from 'next/image';
 type Locale = 'en' | 'pl';
 
 interface ApiArticle {
@@ -151,16 +151,18 @@ useEffect(() => {
             href={buildArticleHref(a.slug)}
             className="block bg-gray-800 rounded-xl overflow-hidden shadow hover:shadow-lg transition group focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
-            <div className="relative h-40 w-full overflow-hidden">
-              <img
-                src={a.coverUrl || PLACEHOLDER_IMG}
-                alt={a.title || 'article'}
-                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                loading="lazy"
-                decoding="async"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
-            </div>
+<div className="relative h-40 w-full overflow-hidden">
+  <Image
+    src={a.coverUrl || PLACEHOLDER_IMG}
+    alt={a.title || 'article'}
+    fill
+    className="object-cover group-hover:scale-105 transition-transform duration-300"
+    sizes="(min-width: 1024px) 33vw, (min-width: 768px) 50vw, 100vw"
+    priority={false}
+  />
+  <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
+</div>
+
             <div className="p-4 space-y-2">
               <h3 className="text-lg font-semibold text-white line-clamp-2">
                 {a.title}

@@ -11,28 +11,34 @@ import type { ObjectId } from 'mongodb';
 
 type Locale = 'en' | 'pl';
 
-export default async function ArticlesHub({
-  params,
-  searchParams,
-}: {
+type Props = {
   params: Promise<{ locale: Locale }>;
   searchParams: Promise<{ page?: string; cat?: string | string[] }>;
-}) {
+};
+
+export default async function ArticlesHub({ params, searchParams }: Props) {
   /* 1) فكّ الوعود */
   const { locale } = await params;
   const { page, cat } = await searchParams;
 
-  /* 2) القيم المحليّة الآمنة */
-  const pageKey: PageKey = (page as PageKey | undefined) ?? 'multi';
-  if (!PAGES.find(p => p.key === pageKey)) notFound();
+  /* 2) التحقق من pageKey */
+  const allowed = new Set<PageKey>(PAGES.map(p => p.key));
+  const candidate = (page as PageKey | undefined) ?? 'multi';
+  const pageKey: PageKey = allowed.has(candidate) ? candidate : 'multi';
+  if (!allowed.has(pageKey)) notFound();
 
-  const selectedCat: string[] = cat ? (Array.isArray(cat) ? cat : [cat]) : [];
+  const selectedCat: string[] = Array.isArray(cat) ? cat : cat ? [cat] : [];
 
-  /* 3) جلب التصنيفات (Typing أدقّ + toHexString) */
+  /* 3) جلب التصنيفات (Typing أدقّ + دعم page/pageKey) */
   const db = (await clientPromise).db();
   const cats = await db
-    .collection<{ _id: ObjectId; name: { en: string; pl: string }; page?: PageKey; pageKey?: PageKey }>('categories')
-    .find({ $or: [{ page: pageKey }, { pageKey: pageKey }] }) // دعم الحقلين لو عندك قديم/جديد
+    .collection<{
+      _id: ObjectId;
+      name: { en: string; pl: string };
+      page?: PageKey;     // سجلات قديمة
+      pageKey?: PageKey;  // سجلات أحدث
+    }>('categories')
+    .find({ $or: [{ page: pageKey }, { pageKey }] })
     .sort({ 'name.en': 1 })
     .map(d => ({ _id: d._id.toHexString(), name: d.name }))
     .toArray();

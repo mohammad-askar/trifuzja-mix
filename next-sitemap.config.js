@@ -1,18 +1,19 @@
+// next-sitemap.config.js
+// import 'dotenv/config' // ← فعّلها إذا احتجت متغيرات .env هنا
+
+const siteUrl = process.env.SITE_URL ?? 'https://your-domain.com'; // ← غيّره إلىドومينك
+
 /** @type {import('next-sitemap').IConfig} */
-module.exports = {
-  siteUrl: 'https://your-domain.com', // ← غيّر هذا إلى دومينك الحقيقي
+const sitemapConfig = {
+  siteUrl,
   generateRobotsTxt: true,
   changefreq: 'weekly',
   priority: 0.7,
   sitemapSize: 7000,
   alternateRefs: [
-    {
-      href: 'https://your-domain.com/en',
-      hreflang: 'en',
-    },
-    {
-      href: 'https://your-domain.com/pl',
-      hreflang: 'pl',
-    },
+    { href: `${siteUrl}/en`, hreflang: 'en' },
+    { href: `${siteUrl}/pl`, hreflang: 'pl' },
   ],
 };
+
+export default sitemapConfig;

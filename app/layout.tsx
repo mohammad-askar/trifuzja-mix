@@ -4,7 +4,7 @@ import { Geist, Geist_Mono } from 'next/font/google';
 import type { ReactNode } from 'react';
 import type { Metadata } from 'next';
 import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/app/api/auth/[...nextauth]/route';
+import { authOptions } from '@/lib/authOptions';
 import Providers from './providers';
 
 const geistSans = Geist({ variable: '--font-geist-sans', subsets: ['latin'] });
