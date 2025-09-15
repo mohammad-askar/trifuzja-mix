@@ -7,6 +7,7 @@ import Image from 'next/image';
 import { Facebook, Twitter, Linkedin } from 'lucide-react';
 import DOMPurify from 'isomorphic-dompurify';
 import type { LucideIcon } from 'lucide-react';
+
 export const revalidate = 60; // ISR خفيف لصفحات المقالات
 
 type Locale = 'en' | 'pl';
@@ -27,7 +28,7 @@ interface ArticleDoc {
   readingTime?: string;
 }
 
-/* ----------------------- helpers (typed) ----------------------- */
+/* ----------------------- helpers ----------------------- */
 function pick(field: Record<string, string> | undefined, locale: Locale): string {
   return field?.[locale] ?? field?.en ?? Object.values(field ?? {})[0] ?? '';
 }
@@ -40,13 +41,17 @@ function resolveSrc(src?: string): string {
 
 function absoluteUrl(pathOrUrl: string): string {
   const base = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/+$/, '') ?? '';
-  if (!base) return pathOrUrl; // fallback إن لم يُضبط المتغير
-  return /^https?:\/\//i.test(pathOrUrl) ? pathOrUrl : `${base}${pathOrUrl.startsWith('/') ? '' : '/'}${pathOrUrl}`;
+  if (!base) return pathOrUrl;
+  return /^https?:\/\//i.test(pathOrUrl)
+    ? pathOrUrl
+    : `${base}${pathOrUrl.startsWith('/') ? '' : '/'}${pathOrUrl}`;
 }
 
 async function fetchArticle(slug: string) {
   const db = (await clientPromise).db();
-  return db.collection<ArticleDoc>('articles').findOne({ slug, status: 'published' });
+  return db
+    .collection<ArticleDoc>('articles')
+    .findOne({ slug, status: 'published' });
 }
 
 function stripHtml(html: string): string {
@@ -54,7 +59,6 @@ function stripHtml(html: string): string {
 }
 
 function youtubeEmbed(url: string): string | null {
-  // يدعم watch?v=… و youtu.be/… و embed/…
   const watch = url.match(/[?&]v=([^&]+)/);
   const short = url.match(/youtu\.be\/([^?&]+)/);
   const embed = url.match(/youtube\.com\/embed\/([^?&]+)/);
@@ -62,13 +66,13 @@ function youtubeEmbed(url: string): string | null {
   return id ? `https://www.youtube.com/embed/${id}` : null;
 }
 
-/* ----------------------- Metadata (SEO) ------------------------ */
+/* ----------------------- Metadata ------------------------ */
 export async function generateMetadata({
   params,
 }: {
-  params: { locale: Locale; slug: string };
+  params: Promise<{ locale: Locale; slug: string }>;
 }): Promise<Metadata> {
-  const { slug, locale } = params;
+  const { slug, locale } = await params; // 👈 لازم await
   const art = await fetchArticle(slug);
 
   if (!art) {
@@ -109,18 +113,16 @@ export async function generateMetadata({
 export default async function ArticlePage({
   params,
 }: {
-  params: { locale: Locale; slug: string };
+  params: Promise<{ locale: Locale; slug: string }>;
 }) {
-  const { locale, slug } = params;
+  const { locale, slug } = await params; // 👈 لازم await
   const art = await fetchArticle(slug);
   if (!art) notFound();
 
-  // نصوص
   const title = pick(art.title, locale);
   const excerpt = pick(art.excerpt, locale);
   const body = pick(art.content, locale);
 
-  // تعقيم المحتوى (السماح بخصائص الصور التي يضيفها المحرّر)
   const bodySafe = body
     ? DOMPurify.sanitize(body, {
         USE_PROFILES: { html: true },
@@ -133,38 +135,41 @@ export default async function ArticlePage({
     { year: 'numeric', month: 'long', day: 'numeric' },
   );
 
-  // روابط المشاركة
-  const pageUrl = encodeURIComponent(absoluteUrl(`/${locale}/articles/${slug}`));
+  const pageUrl = encodeURIComponent(
+    absoluteUrl(`/${locale}/articles/${slug}`),
+  );
 
-const SHARE_ICONS: ReadonlyArray<{
-  Icon: LucideIcon;
-  href: string;
-  label: string;
-  color: string;
-}> = [
-  {
-    Icon: Twitter,
-    href: `https://twitter.com/intent/tweet?url=${pageUrl}&text=${encodeURIComponent(title)}`,
-    label: 'Twitter',
-    color: 'hover:bg-blue-500/20 text-blue-500',
-  },
-  {
-    Icon: Facebook,
-    href: `https://www.facebook.com/sharer/sharer.php?u=${pageUrl}`,
-    label: 'Facebook',
-    color: 'hover:bg-[#3b5998]/20 text-[#3b5998]',
-  },
-  {
-    Icon: Linkedin,
-    href: `https://www.linkedin.com/sharing/share-offsite/?url=${pageUrl}`,
-    label: 'LinkedIn',
-    color: 'hover:bg-[#0a66c2]/20 text-[#0a66c2]',
-  },
-];
+  const SHARE_ICONS: ReadonlyArray<{
+    Icon: LucideIcon;
+    href: string;
+    label: string;
+    color: string;
+  }> = [
+    {
+      Icon: Twitter,
+      href: `https://twitter.com/intent/tweet?url=${pageUrl}&text=${encodeURIComponent(
+        title,
+      )}`,
+      label: 'Twitter',
+      color: 'hover:bg-blue-500/20 text-blue-500',
+    },
+    {
+      Icon: Facebook,
+      href: `https://www.facebook.com/sharer/sharer.php?u=${pageUrl}`,
+      label: 'Facebook',
+      color: 'hover:bg-[#3b5998]/20 text-[#3b5998]',
+    },
+    {
+      Icon: Linkedin,
+      href: `https://www.linkedin.com/sharing/share-offsite/?url=${pageUrl}`,
+      label: 'LinkedIn',
+      color: 'hover:bg-[#0a66c2]/20 text-[#0a66c2]',
+    },
+  ];
 
-
-  // JSON-LD Article
-  const coverAbs = art.coverUrl ? absoluteUrl(resolveSrc(art.coverUrl)) : undefined;
+  const coverAbs = art.coverUrl
+    ? absoluteUrl(resolveSrc(art.coverUrl))
+    : undefined;
   const jsonLd = {
     '@context': 'https://schema.org',
     '@type': 'Article',
