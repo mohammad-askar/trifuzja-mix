@@ -6,7 +6,8 @@ import { z, ZodError } from 'zod';
 import type { Filter } from 'mongodb';
 import clientPromise from '@/types/mongodb';
 import { PAGES, PageKey } from '@/types/constants/pages';
-
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/authOptions';
 /* ---------- Types ---------- */
 export interface ArticleDoc {
   _id?: string;
@@ -112,7 +113,7 @@ export async function GET(req: NextRequest) {
 
 /* ---------- POST (create) ---------- */
 const ArticleSchema = z.object({
-  title:      z.record(z.string(), z.string()),       // { en:"", pl:"" } أو لغة واحدة
+  title:      z.record(z.string(), z.string()),
   excerpt:    z.record(z.string(), z.string()).optional(),
   content:    z.record(z.string(), z.string()).optional(),
   slug:       z.string().min(3),
@@ -125,9 +126,16 @@ const ArticleSchema = z.object({
 
 export async function POST(req: NextRequest) {
   try {
+    // ✅ تحقق صلاحيات
+    const session = await getServerSession(authOptions);
+    const role = session?.user?.role;
+    if (!session || (role !== 'admin' && role !== 'editor')) {
+      return responseError('Unauthorized', 403);
+    }
+
     const parsed = ArticleSchema.parse(await req.json());
 
-    const db  = (await clientPromise).db();
+    const db   = (await clientPromise).db();
     const coll = db.collection<ArticleDoc>('articles');
 
     const dup = await coll.findOne({ slug: parsed.slug });
@@ -135,12 +143,11 @@ export async function POST(req: NextRequest) {
 
     const now = new Date();
 
-    // (اختياري) حساب قراءة بناءً على أوّل محتوى متاح
     const firstContent = parsed.content
       ? Object.values(parsed.content)[0] || ''
       : '';
-    const words = firstContent.trim().split(/\s+/).filter(Boolean).length;
-    const minutes = Math.max(1, Math.ceil(words / 200)); // متوسط 200 كلمة/دقيقة
+    const words   = firstContent.trim().split(/\s+/).filter(Boolean).length;
+    const minutes = Math.max(1, Math.ceil(words / 200));
 
     await coll.insertOne({
       ...parsed,

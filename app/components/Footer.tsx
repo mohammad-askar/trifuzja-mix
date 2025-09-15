@@ -9,7 +9,30 @@ import toast from "react-hot-toast";
 
 type Locale = "en" | "pl";
 
-const translations: Record<Locale, Record<string, string>> = {
+const translations: Record<
+  Locale,
+  {
+    copyright: string;
+    subscribe: string;
+    placeholder: string;
+    thanks: string;
+    invalidEmail: string;
+    subscribeError: string;
+    backToTop: string;
+    links: string;
+    about: string;
+    contact: string;
+    privacy: string;
+    terms: string;
+    imprint: string;
+    cookies: string;
+    ok: string;
+    consentLabel: string;
+    consentRequired: string;
+    home: string;
+    articles: string;
+  }
+> = {
   en: {
     copyright: "All rights reserved",
     subscribe: "Subscribe to our newsletter",
@@ -24,6 +47,13 @@ const translations: Record<Locale, Record<string, string>> = {
     privacy: "Privacy Policy",
     terms: "Terms & Conditions",
     imprint: "Imprint",
+    cookies: "Cookies Policy",
+    ok: "OK",
+    consentLabel:
+      "I consent to receive email updates. See the Privacy Policy for details.",
+    consentRequired: "Please accept the consent to subscribe.",
+    home: "Home",
+    articles: "Articles",
   },
   pl: {
     copyright: "Wszystkie prawa zastrzeżone",
@@ -39,6 +69,13 @@ const translations: Record<Locale, Record<string, string>> = {
     privacy: "Polityka prywatności",
     terms: "Regulamin",
     imprint: "Impressum",
+    cookies: "Polityka Cookies",
+    ok: "OK",
+    consentLabel:
+      "Wyrażam zgodę na otrzymywanie wiadomości e-mail. Szczegóły w Polityce Prywatności.",
+    consentRequired: "Aby się zapisać, zaznacz zgodę.",
+    home: "Strona główna",
+    articles: "Artykuły",
   },
 };
 
@@ -46,32 +83,66 @@ function validateEmail(email: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
-export function Footer({ locale }: { locale: Locale }) {
+type FooterProps = {
+  locale: Locale;
+  /** إظهار رابط سياسة الكوكيز (مفعّل افتراضيًا الآن) */
+  showCookiesLink?: boolean;
+  /** طلب الموافقة الصريحة على الاشتراك (موصى به قانونيًا) */
+  requireNewsletterConsent?: boolean;
+};
+
+export function Footer({
+  locale,
+  showCookiesLink = true,
+  requireNewsletterConsent = true,
+}: FooterProps) {
   const year = new Date().getFullYear();
-  const [email, setEmail] = useState("");
-  const [loading, setLoading] = useState(false);
   const t = translations[locale] ?? translations.en;
 
-  /* -------- handlers -------- */
-  const handleScrollTop = () =>
-    window.scrollTo({ top: 0, behavior: "smooth" });
+  const [email, setEmail] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [consent, setConsent] = useState(false);
+  // honeypot ضد السبام
+  const [hp, setHp] = useState("");
 
-  const handleSubscribe = async (e: React.FormEvent) => {
+  const emailInvalid = email.length > 0 && !validateEmail(email);
+  const disableSubmit =
+    loading || emailInvalid || (requireNewsletterConsent && !consent);
+
+  const handleScrollTop = () => window.scrollTo({ top: 0, behavior: "smooth" });
+
+  const handleSubscribe = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!validateEmail(email)) {
       toast.error(t.invalidEmail);
       return;
     }
+    if (requireNewsletterConsent && !consent) {
+      toast.error(t.consentRequired);
+      return;
+    }
+    if (hp) {
+      // حقل honeypot مملوء => تجاهل بصمت
+      setEmail("");
+      setConsent(false);
+      return;
+    }
+
     setLoading(true);
     try {
       const res = await fetch("/api/subscribe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({
+          email,
+          consent: requireNewsletterConsent ? true : undefined,
+          locale,
+        }),
       });
       if (!res.ok) throw new Error();
       toast.success(t.thanks);
       setEmail("");
+      setConsent(false);
     } catch {
       toast.error(t.subscribeError);
     } finally {
@@ -79,55 +150,136 @@ export function Footer({ locale }: { locale: Locale }) {
     }
   };
 
-  /* -------- JSX -------- */
   return (
     <footer className="relative bg-gray-900/90 backdrop-blur border-t border-gray-700 text-gray-300 shadow-md pt-16 pb-32 overflow-hidden">
       <div className="max-w-6xl mx-auto px-6 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-12 relative z-10">
         {/* logo + description */}
         <div className="flex flex-col gap-4">
           <div className="flex items-center gap-2">
-            <Image src="/images/logo.png" alt="Logo" width={32} height={32} />
-            <span className="font-semibold text-white text-lg">Trifuzja Mix</span>
+            <Image
+              src="/images/logo.png"
+              alt="Initiativa Autonoma logo"
+              width={32}
+              height={32}
+              priority
+            />
+            <span className="font-semibold text-white text-lg">Initiativa Autonoma</span>
           </div>
           <p className="text-sm text-gray-400">
             {locale === "pl"
-              ? "Odkrywaj najlepsze artykuły i treści na Trifuzja Mix."
-              : "Explore the best articles and content on Trifuzja Mix."}
+              ? "Odkrywaj najlepsze artykuły i treści na Initiativa Autonoma."
+              : "Explore the best articles and content on Initiativa Autonoma."}
           </p>
         </div>
 
         {/* links */}
-        <div className="flex flex-col gap-2 text-sm">
+        <nav className="flex flex-col gap-2 text-sm" aria-label={t.links}>
           <span className="font-semibold text-white mb-2">{t.links}</span>
-          <Link href={`/${locale}`} className="hover:text-blue-400">Home</Link>
-          <Link href={`/${locale}/articles`} className="hover:text-blue-400">Articles</Link>
-          <Link href={`/${locale}/about`} className="hover:text-blue-400">{t.about}</Link>
-          <Link href={`/${locale}/contact`} className="hover:text-blue-400">{t.contact}</Link>
-          <Link href={`/${locale}/privacy`} className="hover:text-blue-400">{t.privacy}</Link>
-          <Link href={`/${locale}/terms`} className="hover:text-blue-400">{t.terms}</Link>
-          <Link href={`/${locale}/imprint`} className="hover:text-blue-400">{t.imprint}</Link>
-        </div>
+          <Link href={`/${locale}`} className="hover:text-blue-400">
+            {t.home}
+          </Link>
+          <Link href={`/${locale}/articles`} className="hover:text-blue-400">
+            {t.articles}
+          </Link>
+          <Link href={`/${locale}/about`} className="hover:text-blue-400">
+            {t.about}
+          </Link>
+          <Link href={`/${locale}/contact`} className="hover:text-blue-400">
+            {t.contact}
+          </Link>
+          <Link href={`/${locale}/privacy`} className="hover:text-blue-400">
+            {t.privacy}
+          </Link>
+          <Link href={`/${locale}/terms`} className="hover:text-blue-400">
+            {t.terms}
+          </Link>
+          <Link href={`/${locale}/imprint`} className="hover:text-blue-400">
+            {t.imprint}
+          </Link>
+          {showCookiesLink && (
+            <Link href={`/${locale}/cookies`} className="hover:text-blue-400">
+              {t.cookies}
+            </Link>
+          )}
+        </nav>
 
         {/* subscribe */}
         <div className="flex flex-col gap-3">
           <span className="font-semibold text-white">{t.subscribe}</span>
-          <form onSubmit={handleSubscribe} className="flex max-w-md" noValidate>
+          <form onSubmit={handleSubscribe} className="flex flex-col gap-2 max-w-md" noValidate>
+            {/* honeypot */}
             <input
-              type="email"
-              required
-              value={email}
-              disabled={loading}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder={t.placeholder}
-              className="flex-1 px-4 py-2 bg-zinc-800 text-white border border-zinc-600 rounded-l-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
+              type="text"
+              name="website"
+              value={hp}
+              onChange={(e) => setHp(e.target.value)}
+              tabIndex={-1}
+              autoComplete="off"
+              className="hidden"
+              aria-hidden="true"
             />
-            <button
-              type="submit"
-              disabled={loading}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-r-md transition disabled:opacity-60"
-            >
-              {loading ? "…" : "OK"}
-            </button>
+            <div className="flex">
+              <input
+                type="email"
+                required
+                value={email}
+                disabled={loading}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder={t.placeholder}
+                aria-label={t.placeholder}
+                aria-invalid={emailInvalid}
+                inputMode="email"
+                autoComplete="email"
+                className={[
+                  "flex-1 px-4 py-2 bg-zinc-800 text-white border rounded-l-md focus:outline-none focus:ring-2",
+                  emailInvalid
+                    ? "border-red-500 focus:ring-red-500"
+                    : "border-zinc-600 focus:ring-blue-500",
+                  loading ? "opacity-60" : "",
+                ].join(" ")}
+              />
+              <button
+                type="submit"
+                disabled={disableSubmit}
+                className="bg-blue-600 hover:bg-blue-700 disabled:hover:bg-blue-600 text-white px-4 py-2 rounded-r-md transition disabled:opacity-60"
+                aria-label={t.ok}
+                title={
+                  emailInvalid
+                    ? t.invalidEmail
+                    : requireNewsletterConsent && !consent
+                    ? t.consentRequired
+                    : ""
+                }
+              >
+                {loading ? "…" : t.ok}
+              </button>
+            </div>
+            {/* consent (GDPR) */}
+            <label className="flex items-start gap-2 text-xs text-gray-400">
+              <input
+                type="checkbox"
+                checked={consent}
+                onChange={(e) => setConsent(e.target.checked)}
+                className="mt-0.5"
+                aria-required={requireNewsletterConsent}
+              />
+              <span>
+                {t.consentLabel}{" "}
+                <Link href={`/${locale}/privacy`} className="underline">
+                  {t.privacy}
+                </Link>
+                {showCookiesLink && (
+                  <>
+                    {" "}
+                    •{" "}
+                    <Link href={`/${locale}/cookies`} className="underline">
+                      {t.cookies}
+                    </Link>
+                  </>
+                )}
+                .
+              </span>
+            </label>
           </form>
         </div>
 
@@ -137,7 +289,7 @@ export function Footer({ locale }: { locale: Locale }) {
             <a
               href="https://tiktok.com"
               target="_blank"
-              rel="noopener noreferrer"
+              rel="nofollow noopener noreferrer"
               className="hover:text-pink-400 transition"
               aria-label="TikTok"
             >
@@ -146,7 +298,7 @@ export function Footer({ locale }: { locale: Locale }) {
             <a
               href="https://youtube.com"
               target="_blank"
-              rel="noopener noreferrer"
+              rel="nofollow noopener noreferrer"
               className="hover:text-red-500 transition"
               aria-label="YouTube"
             >
@@ -155,7 +307,7 @@ export function Footer({ locale }: { locale: Locale }) {
             <a
               href="https://facebook.com"
               target="_blank"
-              rel="noopener noreferrer"
+              rel="nofollow noopener noreferrer"
               className="hover:text-blue-500 transition"
               aria-label="Facebook"
             >
@@ -174,7 +326,7 @@ export function Footer({ locale }: { locale: Locale }) {
 
       {/* bottom bar */}
       <div className="mt-10 text-center text-xs text-gray-500 border-t border-gray-700 pt-6">
-        © {year} Trifuzja Mix — {t.copyright}
+        © {year} Initiativa Autonoma — {t.copyright}
       </div>
 
       {/* decorative wave */}

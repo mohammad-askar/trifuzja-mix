@@ -30,15 +30,15 @@ export async function generateMetadata(
 
     const baseTitle =
       loc === 'pl'
-        ? `Edycja: ${pickedTitle} | Panel | Trifuzja`
-        : `Edit: ${pickedTitle} | Admin | Trifuzja`;
+        ? `Edycja: ${pickedTitle} | Panel | Initiativa Autonoma`
+        : `Edit: ${pickedTitle} | Admin | Initiativa Autonoma`;
 
     return {
       title: baseTitle,
       description:
         loc === 'pl'
-          ? 'Panel edycji artykułu w Trifuzja.'
-          : 'Article editing panel in Trifuzja.',
+          ? 'Panel edycji artykułu w Initiativa Autonoma.'
+          : 'Article editing panel in Initiativa Autonoma.',
       robots: {
         index: false,
         follow: false, // لو أردت منع التتبع داخل لوحة التحكم
@@ -53,7 +53,7 @@ export async function generateMetadata(
             ? 'Edycja artykułu (panel administratorski).'
             : 'Article edit (admin panel).',
         url: `/${loc}/admin/articles/${slug}/edit`,
-        siteName: 'Trifuzja Mix',
+        siteName: 'Initiativa Autonoma',
         type: 'website',
       },
       twitter: {
@@ -69,8 +69,8 @@ export async function generateMetadata(
     return {
       title:
         locale === 'pl'
-          ? 'Edycja artykułu | Panel | Trifuzja'
-          : 'Edit Article | Admin | Trifuzja',
+          ? 'Edycja artykułu | Panel | Initiativa Autonoma'
+          : 'Edit Article | Admin | Initiativa Autonoma',
       robots: { index: false, follow: false },
     };
   }

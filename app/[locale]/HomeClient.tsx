@@ -42,7 +42,7 @@ interface LocaleTexts {
 
 const TEXTS: Record<Locale, LocaleTexts> = {
   en: {
-    heroTitle: 'Welcome to Trifuzja Mix',
+    heroTitle: 'Welcome to Initiativa Autonoma',
     heroSubtitle: 'Articles that educate, inspire, and engage – in English and Polish.',
     cta: 'Start Reading',
     latest: 'Latest Articles',
@@ -51,7 +51,7 @@ const TEXTS: Record<Locale, LocaleTexts> = {
     retry: 'Retry',
   },
   pl: {
-    heroTitle: 'Witamy w Trifuzja Mix',
+    heroTitle: 'Witamy w Initiativa Autonoma',
     heroSubtitle: 'Artykuły, które edukują, inspirują i angażują – po angielsku i po polsku.',
     cta: 'Czytaj teraz',
     latest: 'Najnowsze artykuły',

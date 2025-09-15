@@ -1,3 +1,4 @@
+//E:\trifuzja-mix\app\[locale]\admin\dashboard\page.tsx
 import Link from 'next/link';
 import { Home, FolderKanban, Newspaper } from 'lucide-react';
 

@@ -1,4 +1,4 @@
-// src/lib/authOptions.ts
+// E:\trifuzja-mix\lib\authOptions.ts
 import type { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { MongoDBAdapter } from "@next-auth/mongodb-adapter";

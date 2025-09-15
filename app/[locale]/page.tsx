@@ -16,14 +16,14 @@ interface HomeTexts {
 
 const TEXTS: Record<Locale, HomeTexts> = {
   en: {
-    heroTitle: 'Welcome to Trifuzja Mix',
+    heroTitle: 'Welcome to Initiativa Autonoma',
     heroSubtitle: 'Articles that educate, inspire, and engage – in English and Polish.',
     cta: 'Start Reading',
     latest: 'Latest Articles',
     empty: 'No articles yet.',
   },
   pl: {
-    heroTitle: 'Witamy w Trifuzja Mix',
+    heroTitle: 'Witamy w Initiativa Autonoma',
     heroSubtitle: 'Artykuły, które edukują, inspirują i angażują – po angielsku i po polsku.',
     cta: 'Czytaj teraz',
     latest: 'Najnowsze artykuły',
@@ -61,7 +61,7 @@ export async function generateMetadata(
   const { locale } = await params;
   const loc: Locale = locale === 'pl' ? 'pl' : 'en';
   return {
-    title: loc === 'pl' ? 'Strona główna | Trifuzja Mix' : 'Home | Trifuzja Mix',
+    title: loc === 'pl' ? 'Strona główna | Initiativa Autonoma' : 'Home | Initiativa Autonoma',
     description: loc === 'pl'
       ? 'Najnowsze artykuły po polsku i angielsku.'
       : 'Latest articles in English and Polish.',

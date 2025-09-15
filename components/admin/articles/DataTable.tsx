@@ -1,24 +1,23 @@
-// components/admin/articles/DataTable.tsx
+//E:\trifuzja-mix\components\admin\articles\DataTable.tsx
 'use client';
 
 import {
   ChevronLeft, ChevronRight,
   Pencil, Trash, RefreshCw, Eye
-}                       from 'lucide-react';
-import Link             from 'next/link';
-import { useRouter,
-         useSearchParams } from 'next/navigation';
-import { useTransition,
-         useMemo }      from 'react';
-import clsx             from 'clsx';
-import { toggleStatus,
-         deleteArticle } from './actions';   // ← Server‑Actions
-import type { Row }     from '@/app/[locale]/admin/articles/page';
-
-/* --------- أنماط صغيرة مكرّرة --------- */
+} from 'lucide-react';
+import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useTransition, useMemo, useState } from 'react';
+import clsx from 'clsx';
+import { toggleStatus } from './actions'; // ← Server-Actions
+import type { Row } from '@/app/[locale]/admin/articles/page';
+import ConfirmDelete from '@/app/components/ConfirmDelete';
+import toast from 'react-hot-toast';
+import { deleteArticle as deleteArticleAction } from './actions';
+/* --------- شارات الحالة --------- */
 const badge = {
-  base   : 'inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold',
-  map    : {
+  base: 'inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold',
+  map: {
     draft     : 'bg-amber-500/15 text-amber-400',
     review    : 'bg-fuchsia-500/15 text-fuchsia-400',
     scheduled : 'bg-sky-500/15 text-sky-400',
@@ -26,53 +25,89 @@ const badge = {
     archived  : 'bg-zinc-500/15 text-zinc-400',
   } as const,
 };
-
+type DeleteResult = { ok: true } | { error: string };
 interface Props {
   locale    : 'en' | 'pl';
   rows      : Row[];
   total     : number;
   pagination: { page:number; totalPages:number; limit:number };
 }
-
+const runDelete = (slug: string): Promise<DeleteResult> =>
+  deleteArticleAction(slug) as Promise<DeleteResult>;
 /* ========================================================================= */
 export default function DataTable({ locale, rows, total, pagination }: Props) {
-  const [pending,start]   = useTransition();
-  const router            = useRouter();
-  const params            = useSearchParams();
+  const [pending, start] = useTransition();
+  const router = useRouter();
+  const params = useSearchParams();
 
-  /* ---------- ترجمات صغيرة ---------- */
-  const tStatus = useMemo(()=>({
+  /* ---------- ترجمات ---------- */
+  const tStatus = useMemo(() => ({
     draft     : locale==='pl' ? 'Szkic'      : 'Draft',
     review    : locale==='pl' ? 'Recenzja'   : 'Review',
     scheduled : locale==='pl' ? 'Zaplan.'    : 'Scheduled',
     published : locale==='pl' ? 'Opublik.'   : 'Published',
     archived  : locale==='pl' ? 'Archiw.'    : 'Archived',
-  }),[locale]);
+  }), [locale]);
+
+  const tConfirm = useMemo(() => ({
+    title      : locale==='pl' ? 'Potwierdź usunięcie' : 'Confirm deletion',
+    cancel     : locale==='pl' ? 'Anuluj'              : 'Cancel',
+    del        : locale==='pl' ? 'Usuń'                : 'Delete',
+    msg: (title:string) =>
+      locale==='pl'
+        ? `Czy na pewno chcesz usunąć artykuł: „${title}”?`
+        : `Are you sure you want to delete: “${title}”?`,
+  }), [locale]);
+
+  /* ---------- حالة الديالوج ---------- */
+const [dlgOpen, setDlgOpen] = useState(false);
+const [toDelete, setToDelete] = useState<null | { slug: string; title: string }>(null);
+
 
   /* ---------- أفعال ---------- */
-  const onToggle = (id:string)=> start(()=> toggleStatus(id).then(()=>router.refresh()));
-  const onDelete = (slug:string)=> {
-    if (!confirm(locale==='pl' ? 'Usunąć artykuł?' : 'Delete article?')) return;
-    start(()=> deleteArticle(slug).then(()=>router.refresh()));
-  };
+  const onToggle = (id:string) =>
+    start(() => toggleStatus(id).then(() => router.refresh()));
 
-  /* ---------- بناء رابط الصفحات يحافظ على كل الـ query ما عدا رقم الصفحة ---------- */
-  const pageHref = (p:number)=> {
+const askDelete = (slug: string, title: string) => {
+  setToDelete({ slug, title });
+  setDlgOpen(true);
+};
+
+const confirmDelete = () => {
+  if (!toDelete) return;
+  start(() => {
+    runDelete(toDelete.slug)
+      .then((res) => {
+        if ('error' in res) {
+          toast.error(res.error);
+        } else {
+          toast.success(locale === 'pl' ? 'Usunięto artykuł.' : 'Article deleted.');
+          router.refresh();
+        }
+      })
+      .finally(() => setDlgOpen(false));
+  });
+};
+
+  /* ---------- بناء روابط الصفحات ---------- */
+  const pageHref = (p:number) => {
     const qp = new URLSearchParams(params);
-    qp.set('page',String(p));
+    qp.set('page', String(p));
     return `?${qp.toString()}`;
   };
 
-  /* ---------- واجهة المستخدم ---------- */
-  if (total===0)
-    return <EmptyState locale={locale} />;
+  /* ---------- لا توجد بيانات ---------- */
+  if (total === 0) return <EmptyState locale={locale} />;
 
+  /* ---------- JSX ---------- */
   return (
     <div className="relative">
       {/* طبقة تحميل نصف شفافة */}
-      {pending && <div className="absolute inset-0 bg-gray-900/90 flex items-center justify-center z-20">
-        <RefreshCw className="w-6 h-6 animate-spin text-black" />
-      </div>}
+      {pending && (
+        <div className="absolute inset-0 bg-black/20 flex items-center justify-center z-20">
+          <RefreshCw className="w-6 h-6 animate-spin" />
+        </div>
+      )}
 
       <div className="overflow-x-auto rounded-xl ring-1 ring-white/10 shadow-lg">
         <table className="min-w-[900px] w-full border-collapse text-sm">
@@ -85,82 +120,100 @@ export default function DataTable({ locale, rows, total, pagination }: Props) {
               <Th className="w-32 text-center">Actions</Th>
             </tr>
           </thead>
-          <tbody>
-            {rows.map((r,i)=>(
-              <tr key={r.id} className={clsx(i%2 && 'bg-gray-400/90','group')}>
-                <Td>
+
+        <tbody>
+          {rows.map((r,i)=>(
+            <tr key={r.id} className={clsx(i%2 && 'bg-gray-400/90','group')}>
+              <Td>
+                <Link
+                  href={`/${locale}/admin/articles/${r.slug}/edit`}
+                  className="font-medium text-black group-hover:underline"
+                >
+                  {r.title}
+                </Link>
+              </Td>
+
+              <Td className="uppercase font-mono">{r.page}</Td>
+
+              <Td>
+                <span className={clsx(badge.base, badge.map[r.status])}>
+                  {tStatus[r.status]}
+                </span>
+              </Td>
+
+              <Td className="text-xs text-black">
+                {new Date(r.createdAt).toLocaleDateString(locale,{
+                  year:'numeric', month:'short', day:'numeric'
+                })}
+              </Td>
+
+              <Td>
+                <div className="flex items-center justify-center gap-3 text-black">
+                  <button
+                    title="Toggle status"
+                    disabled={pending}
+                    onClick={()=>onToggle(r.id)}
+                    className="text-emerald-800 hover:text-emerald-400 disabled:opacity-10"
+                  >
+                    ↕
+                  </button>
+
+                  <Link
+                    href={`/${locale}/articles/${r.slug}`} target="_blank"
+                    title="Preview" className="text-sky-600 hover:text-sky-400"
+                  >
+                    <Eye className="w-4 h-4"/>
+                  </Link>
+
                   <Link
                     href={`/${locale}/admin/articles/${r.slug}/edit`}
-                    className="font-medium text-black group-hover:underline"
+                    title="Edit" className="text-indigo-600 hover:text-indigo-400"
                   >
-                    {r.title}
+                    <Pencil className="w-4 h-4"/>
                   </Link>
-                </Td>
 
-                <Td className="uppercase font-mono">{r.page}</Td>
-
-                <Td>
-                  <span className={clsx(badge.base, badge.map[r.status])}>
-                    {tStatus[r.status]}
-                  </span>
-                </Td>
-
-                <Td className="text-xs text-black">
-                  {new Date(r.createdAt).toLocaleDateString(locale,{
-                    year:'numeric',month:'short',day:'numeric'
-                  })}
-                </Td>
-
-                <Td>
-                  <div className="flex items-center justify-center gap-3 text-black">
-                    <button title="Toggle status" disabled={pending}
-                            onClick={()=>onToggle(r.id)}
-                            className="text-emerald-800 hover:text-emerald-400 disabled:opacity-10">
-                      ↕
-                    </button>
-
-                    <Link href={`/${locale}/articles/${r.slug}`} target="_blank"
-                          title="Preview" className="text-sky-600 hover:text-sky-400">
-                      <Eye className="w-4 h-4"/>
-                    </Link>
-
-                    <Link href={`/${locale}/admin/articles/${r.slug}/edit`}
-                          title="Edit" className="text-indigo-600 hover:text-indigo-400">
-                      <Pencil className="w-4 h-4"/>
-                    </Link>
-
-                    <button title="Delete" disabled={pending}
-                            onClick={()=>onDelete(r.slug)}
-                            className="text-red-700 hover:text-red-400 disabled:opacity-40">
-                      <Trash className="w-4 h-4"/>
-                    </button>
-                  </div>
-                </Td>
-              </tr>
-            ))}
-          </tbody>
+                  <button
+                    title="Delete"
+                    disabled={pending}
+                    onClick={()=>askDelete(r.slug, r.title)}
+                    className="text-red-700 hover:text-red-400 disabled:opacity-40"
+                  >
+                    <Trash className="w-4 h-4"/>
+                  </button>
+                </div>
+              </Td>
+            </tr>
+          ))}
+        </tbody>
         </table>
 
         {/* -------- ترقيم الصفحات -------- */}
-        <nav
-          className="flex items-center justify-between px-4 py-3 bg-gray-900/90 text-xs text-white">
+        <nav className="flex items-center justify-between px-4 py-3 bg-gray-900/90 text-xs text-white">
           <span>
             Page&nbsp;<b>{pagination.page}</b>&nbsp;/&nbsp;<b>{pagination.totalPages}</b>
             &nbsp;–&nbsp;<b>{total.toLocaleString()}</b>&nbsp;items
           </span>
-
           <div className="flex gap-1">
             <PageBtn href={pageHref(pagination.page-1)} disabled={pagination.page===1}>
               <ChevronLeft className="w-4 h-4"/>
             </PageBtn>
-
-            <PageBtn href={pageHref(pagination.page+1)}
-                     disabled={pagination.page===pagination.totalPages}>
+            <PageBtn href={pageHref(pagination.page+1)} disabled={pagination.page===pagination.totalPages}>
               <ChevronRight className="w-4 h-4"/>
             </PageBtn>
           </div>
         </nav>
       </div>
+
+      {/* ---- ConfirmDelete Dialog ---- */}
+      <ConfirmDelete
+        open={dlgOpen}
+        setOpen={setDlgOpen}
+        onConfirm={confirmDelete}
+        title={tConfirm.title}
+        message={toDelete ? tConfirm.msg(toDelete.title) : ''}
+        cancelLabel={tConfirm.cancel}
+        deleteLabel={tConfirm.del}
+      />
     </div>
   );
 }
