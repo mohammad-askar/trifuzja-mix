@@ -1,4 +1,5 @@
 // E:\trifuzja-mix\app\api\upload\route.ts
+
 import { NextRequest, NextResponse } from 'next/server';
 import { v2 as cloudinary } from 'cloudinary';
 import { getServerSession } from 'next-auth';
