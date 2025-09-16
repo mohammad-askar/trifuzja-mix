@@ -1,25 +1,32 @@
-// المسار: /app/api/upload/route.ts
-// ⬆️ لا تضعه داخل [slug]. هذا مسار مستقل لرفع الصور
-
+// app/api/upload/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { mkdir, writeFile } from 'node:fs/promises';
-import path from 'node:path';
-import crypto from 'node:crypto';
+import { v2 as cloudinary } from 'cloudinary';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/authOptions';
 
-const MAX_SIZE = 5 * 1024 * 1024;
-const ALLOWED  = ['image/jpeg','image/png','image/webp','image/gif'];
+// إعداد Cloudinary من env (خلي القيم في .env.local + Vercel env)
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
+const MAX_SIZE = 5 * 1024 * 1024; // 5MB
+const ALLOWED = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 
 export async function POST(req: NextRequest) {
   try {
-    // 🛡️ حصر الرفع (اختياري) – إن أردت السماح فقط للإداري علّق السطران التاليان
+    // 🛡️ السماح بس للإداريين
     const session = await getServerSession(authOptions);
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
     const form = await req.formData();
     const file = form.get('file') as File | null;
-    if (!file) return NextResponse.json({ error: 'No file sent' }, { status: 400 });
+    if (!file) {
+      return NextResponse.json({ error: 'No file sent' }, { status: 400 });
+    }
 
     if (!ALLOWED.includes(file.type)) {
       return NextResponse.json({ error: 'Unsupported type' }, { status: 415 });
@@ -28,37 +35,28 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'File too large (max 5MB)' }, { status: 413 });
     }
 
-    // مجلد بتاريخ (سنة/شهر/يوم)
-    const now      = new Date();
-    const y        = now.getFullYear();
-    const m        = String(now.getMonth() + 1).padStart(2,'0');
-    const d        = String(now.getDate()).padStart(2,'0');
-    const dateDir  = path.join(String(y), m, d);
-    const baseDir  = path.join(process.cwd(), 'public', 'uploads', dateDir);
-    await mkdir(baseDir, { recursive: true });
+    // 🌀 قراءة الباينري وتحويله Base64
+    const arrayBuffer = await file.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    const base64 = buffer.toString('base64');
+    const dataUri = `data:${file.type};base64,${base64}`;
 
-    // امتداد آمن من الـ MIME
-    const extMap: Record<string,string> = {
-      'image/jpeg':'jpg',
-      'image/png':'png',
-      'image/webp':'webp',
-      'image/gif':'gif',
-    };
-    const ext   = extMap[file.type] || 'bin';
-    const name  = `${Date.now()}-${crypto.randomBytes(6).toString('hex')}.${ext}`;
-    const buf   = Buffer.from(await file.arrayBuffer());
+    // رفع إلى Cloudinary
+    const uploadRes = await cloudinary.uploader.upload(dataUri, {
+      folder: 'articles', // مجلد في Cloudinary (ممكن تغيره)
+      resource_type: 'image',
+    });
 
-    await writeFile(path.join(baseDir, name), buf);
-
-    const relative = `/uploads/${y}/${m}/${d}/${name}`;
-
-    return NextResponse.json({
-      url: relative,
-      name,
-      type: file.type,
-      size: file.size,
-    }, { status: 201 });
-
+    return NextResponse.json(
+      {
+        url: uploadRes.secure_url,
+        public_id: uploadRes.public_id,
+        width: uploadRes.width,
+        height: uploadRes.height,
+        format: uploadRes.format,
+      },
+      { status: 201 },
+    );
   } catch (err: unknown) {
     console.error('UPLOAD ERROR', err);
     return NextResponse.json({ error: 'Upload failed' }, { status: 500 });

@@ -36,6 +36,7 @@
     "@tiptap/starter-kit": "^3.0.7",
     "@tiptap/suggestion": "^3.0.7",
     "bcryptjs": "^3.0.2",
+    "cloudinary": "^2.7.0",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
     "dotenv": "^17.2.0",
