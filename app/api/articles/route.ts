@@ -5,60 +5,68 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z, ZodError } from 'zod';
 import type { Filter } from 'mongodb';
 import clientPromise from '@/types/mongodb';
-import { PAGES, PageKey } from '@/types/constants/pages';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/authOptions';
-/* ---------- Types ---------- */
+
+interface CoverPos { x: number; y: number }
+interface ArticleMeta {
+  coverPosition?: CoverPos | 'top' | 'center' | 'bottom';
+  [key: string]: unknown;
+}
+
 export interface ArticleDoc {
   _id?: string;
-  title:    Record<string, string>;
+  slug: string;
+  title: Record<string, string>;
   excerpt?: Record<string, string>;
   content?: Record<string, string>;
-  slug: string;
-  page: PageKey;
   categoryId: string;
   coverUrl?: string;
   videoUrl?: string;
-  status: 'draft' | 'published';
+  status?: 'draft' | 'published';
   createdAt: Date;
   updatedAt: Date;
   readingTime?: string;
+  meta?: ArticleMeta;
 }
 
 /* ---------- Helpers ---------- */
-const pageEnum = z.enum(PAGES.map(p => p.key) as [PageKey, ...PageKey[]]);
-
 const responseError = (msg: string, status = 400) =>
   NextResponse.json({ error: msg }, { status });
 
-const relativeOrAbsoluteUrl = z.string().refine(
-  v =>
-    !v ||
-    v.startsWith('http://') ||
-    v.startsWith('https://') ||
-    v.startsWith('/uploads/'),
-  'Invalid URL'
-);
+const relativeOrAbsoluteUrl = z
+  .string()
+  .refine(
+    (v) =>
+      !v ||
+      v.startsWith('http://') ||
+      v.startsWith('https://') ||
+      v.startsWith('/uploads/'),
+    'Invalid URL',
+  );
 
 /* ---------- GET (list) ---------- */
 export async function GET(req: NextRequest) {
   try {
     const SearchSchema = z.object({
-      page:   pageEnum.nullish(),
       locale: z.enum(['en', 'pl']).default('en'),
       pageNo: z.coerce.number().int().min(1).default(1),
-      limit:  z.coerce.number().int().min(1).max(50).default(9),
+      limit: z.coerce.number().int().min(1).max(50).default(9),
     });
 
-    const qp = SearchSchema.parse(Object.fromEntries(req.nextUrl.searchParams));
+    const qp = SearchSchema.parse(
+      Object.fromEntries(req.nextUrl.searchParams),
+    );
 
-    // categories (?cat= أو متعددة)
+    // (?cat=... — multiple allowed)
     const catsArray = req.nextUrl.searchParams
       .getAll('cat')
-      .flatMap(v => v.split(',').filter(Boolean));
+      .flatMap((v) => v.split(',').filter(Boolean));
 
-    const filter: Filter<ArticleDoc> = { status: 'published' };
-    if (qp.page) filter.page = qp.page;
+    // Only published (or legacy docs without status)
+    const filter: Filter<ArticleDoc> = {
+      $or: [{ status: 'published' }, { status: { $exists: false } }],
+    };
     if (catsArray.length === 1) filter.categoryId = catsArray[0];
     else if (catsArray.length > 1) filter.categoryId = { $in: catsArray };
 
@@ -67,31 +75,48 @@ export async function GET(req: NextRequest) {
     const db = (await clientPromise).db();
     const coll = db.collection<ArticleDoc>('articles');
 
+    // ✅ Inclusion-only projection (avoids inclusion/exclusion conflict)
     const cursor = coll
-      .find(filter, { projection: { content: 0 } })
+      .find(filter, {
+        projection: {
+          slug: 1,
+          title: 1,
+          excerpt: 1,
+          categoryId: 1,
+          coverUrl: 1,
+          videoUrl: 1,
+          status: 1,
+          createdAt: 1,
+          updatedAt: 1,
+          readingTime: 1,
+          'meta.coverPosition': 1,
+        },
+      })
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(qp.limit);
 
-    const docs  = await cursor.toArray();
+    const docs = await cursor.toArray();
     const total = await coll.countDocuments(filter);
 
-    const pick = (obj?: Record<string,string>) =>
+    const pick = (obj?: Record<string, string>) =>
       obj?.[qp.locale] ?? Object.values(obj ?? {})[0] ?? '';
 
-    const articles = docs.map(d => ({
-      _id:        d._id?.toString(),
-      slug:       d.slug,
-      page:       d.page,
+    const articles = docs.map((d) => ({
+      _id: d._id?.toString(),
+      slug: d.slug,
       categoryId: d.categoryId,
-      coverUrl:   d.coverUrl,
-      videoUrl:   d.videoUrl,
-      status:     d.status,
-      createdAt:  d.createdAt,
-      updatedAt:  d.updatedAt,
-      readingTime:d.readingTime,
-      title:      pick(d.title),
-      excerpt:    pick(d.excerpt),
+      coverUrl: d.coverUrl,
+      videoUrl: d.videoUrl,
+      status: d.status,
+      createdAt: d.createdAt,
+      updatedAt: d.updatedAt,
+      readingTime: d.readingTime,
+      meta: d.meta?.coverPosition
+        ? { coverPosition: d.meta.coverPosition }
+        : undefined,
+      title: pick(d.title),
+      excerpt: pick(d.excerpt),
     }));
 
     const res = NextResponse.json({
@@ -105,28 +130,37 @@ export async function GET(req: NextRequest) {
     return res;
   } catch (err) {
     if (err instanceof ZodError)
-      return responseError(err.issues.map(i => i.message).join(' | '));
+      return responseError(err.issues.map((i) => i.message).join(' | '));
     console.error('GET /api/articles', err);
     return responseError('Server error', 500);
   }
 }
 
 /* ---------- POST (create) ---------- */
+// No page/status in body — we publish directly
 const ArticleSchema = z.object({
-  title:      z.record(z.string(), z.string()),
-  excerpt:    z.record(z.string(), z.string()).optional(),
-  content:    z.record(z.string(), z.string()).optional(),
-  slug:       z.string().min(3),
-  page:       pageEnum,
-  categoryId: z.string(),
-  coverUrl:   relativeOrAbsoluteUrl.optional(),
-  videoUrl:   relativeOrAbsoluteUrl.optional(),
-  status:     z.enum(['draft', 'published']),
+  title: z.record(z.string(), z.string()),
+  excerpt: z.record(z.string(), z.string()).optional(),
+  content: z.record(z.string(), z.string()).optional(),
+  slug: z.string().min(3),
+  categoryId: z.string().min(1),
+  coverUrl: relativeOrAbsoluteUrl.optional(),
+  videoUrl: relativeOrAbsoluteUrl.optional(),
+  meta: z
+    .object({
+      coverPosition: z
+        .union([
+          z.object({ x: z.number(), y: z.number() }),
+          z.enum(['top', 'center', 'bottom']),
+        ])
+        .optional(),
+    })
+    .passthrough()
+    .optional(),
 });
 
 export async function POST(req: NextRequest) {
   try {
-    // ✅ تحقق صلاحيات
     const session = await getServerSession(authOptions);
     const role = session?.user?.role;
     if (!session || (role !== 'admin' && role !== 'editor')) {
@@ -135,7 +169,7 @@ export async function POST(req: NextRequest) {
 
     const parsed = ArticleSchema.parse(await req.json());
 
-    const db   = (await clientPromise).db();
+    const db = (await clientPromise).db();
     const coll = db.collection<ArticleDoc>('articles');
 
     const dup = await coll.findOne({ slug: parsed.slug });
@@ -146,11 +180,12 @@ export async function POST(req: NextRequest) {
     const firstContent = parsed.content
       ? Object.values(parsed.content)[0] || ''
       : '';
-    const words   = firstContent.trim().split(/\s+/).filter(Boolean).length;
+    const words = firstContent.trim().split(/\s+/).filter(Boolean).length;
     const minutes = Math.max(1, Math.ceil(words / 200));
 
     await coll.insertOne({
       ...parsed,
+      status: 'published', // publish directly
       createdAt: now,
       updatedAt: now,
       readingTime: `${minutes} min read`,
@@ -159,7 +194,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ slug: parsed.slug }, { status: 201 });
   } catch (err) {
     if (err instanceof ZodError)
-      return responseError(err.issues.map(i => i.message).join(' | '));
+      return responseError(err.issues.map((i) => i.message).join(' | '));
     console.error('POST /api/articles', err);
     return responseError('Server error', 500);
   }

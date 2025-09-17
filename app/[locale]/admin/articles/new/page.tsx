@@ -8,7 +8,6 @@ import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 
 /* ------------------------- Dynamic ArticleEditor ------------------------- */
-/** نحمّل المحرّر بدون SSR. يدعم Suspense، والمحرّر نفسه لديه سكلاتون داخلي للمحتوى الغني. */
 const ArticleEditor = dynamic(() => import('@/app/components/ArticleEditor'), {
   ssr: false,
 });
@@ -17,21 +16,24 @@ const ArticleEditor = dynamic(() => import('@/app/components/ArticleEditor'), {
 const LOCALES = ['en', 'pl'] as const;
 type Locale = (typeof LOCALES)[number];
 
-const t: Record<Locale, {
-  title: string;
-  subtitle: string;
-  login: string;
-  loginLink: string;
-  loading: string;
-  unauthorized: string;
-  backToList: string;
-  goToLogin: string;
-  editorLoading: string;
-  errorLoading: string;
-}> = {
+const t: Record<
+  Locale,
+  {
+    title: string;
+    subtitle: string;
+    login: string;
+    loginLink: string;
+    loading: string;
+    unauthorized: string;
+    backToList: string;
+    goToLogin: string;
+    editorLoading: string;
+    errorLoading: string;
+  }
+> = {
   en: {
     title: 'New Article',
-    subtitle: 'Create a draft, add content and cover, then publish.',
+    subtitle: 'Write your article, add a cover and save.',
     login: 'You must ',
     loginLink: 'login',
     loading: 'Loading…',
@@ -43,7 +45,7 @@ const t: Record<Locale, {
   },
   pl: {
     title: 'Nowy artykuł',
-    subtitle: 'Utwórz szkic, dodaj treść i okładkę, a następnie opublikuj.',
+    subtitle: 'Napisz artykuł, dodaj okładkę i zapisz.',
     login: 'Musisz się ',
     loginLink: 'zalogować',
     loading: 'Ładowanie…',
@@ -72,9 +74,8 @@ function EditorSkeleton({ hint }: { hint: string }) {
       {/* Excerpt */}
       <div className="mt-4 h-20 w-full rounded-md bg-gray-100 dark:bg-zinc-800" />
 
-      {/* Selects */}
-      <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
-        <div className="h-10 rounded-md bg-gray-100 dark:bg-zinc-800" />
+      {/* أدوات مختصرة */}
+      <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
         <div className="h-10 rounded-md bg-gray-100 dark:bg-zinc-800" />
         <div className="h-10 rounded-md bg-gray-100 dark:bg-zinc-800" />
       </div>
@@ -132,14 +133,13 @@ function Notice({
   actionHref?: string;
   actionLabel?: string;
 }) {
-  const base =
-    'rounded-lg border px-4 py-3 text-sm flex items-start gap-3';
+  const base = 'rounded-lg border px-4 py-3 text-sm flex items-start gap-3';
   const toneMap = {
     error:
       'border-red-200/60 dark:border-red-900/40 bg-red-50/60 dark:bg-red-950/30 text-red-800 dark:text-red-200',
     info:
       'border-blue-200/60 dark:border-blue-900/40 bg-blue-50/60 dark:bg-blue-950/30 text-blue-800 dark:text-blue-200',
-  };
+  } as const;
   return (
     <div role="alert" className={`${base} ${toneMap[tone]}`}>
       <div className="mt-0.5">⚠️</div>
@@ -162,7 +162,7 @@ function Notice({
 
 /* --------------------------------- Page --------------------------------- */
 export default function NewArticlePage() {
-  /* Locale & helpers */
+  // Locale
   const params = useParams() as { locale: Locale };
   const locale: Locale = LOCALES.includes(params.locale) ? params.locale : 'en';
   const { title, subtitle, login, loginLink, loading, unauthorized, backToList, goToLogin, editorLoading } = t[locale];
@@ -173,31 +173,21 @@ export default function NewArticlePage() {
   const { data: session, status } = useSession();
   const role = session?.user?.role as 'admin' | 'editor' | 'viewer' | undefined;
 
-  /* Loading state for session check */
+  // Loading session
   if (status === 'loading') {
     return (
       <main className="max-w-4xl mx-auto px-4 py-10">
-        <PageHeader
-          title={title}
-          subtitle={subtitle}
-          backHref={`/${locale}/admin/articles`}
-          backText={backToList}
-        />
+        <PageHeader title={title} subtitle={subtitle} backHref={`/${locale}/admin/articles`} backText={backToList} />
         <EditorSkeleton hint={loading} />
       </main>
     );
   }
 
-  /* Not authenticated */
+  // Not authenticated
   if (!session) {
     return (
       <main className="max-w-2xl mx-auto px-4 py-10">
-        <PageHeader
-          title={title}
-          subtitle={subtitle}
-          backHref={`/${locale}/admin/articles`}
-          backText={backToList}
-        />
+        <PageHeader title={title} subtitle={subtitle} backHref={`/${locale}/admin/articles`} backText={backToList} />
         <Notice tone="error" actionHref={`/${locale}/login`} actionLabel={goToLogin}>
           {login}
           <Link className="underline underline-offset-2" href={`/${locale}/login`}>
@@ -209,30 +199,20 @@ export default function NewArticlePage() {
     );
   }
 
-  /* Role guard */
+  // Role guard
   if (role !== 'admin' && role !== 'editor') {
     return (
       <main className="max-w-2xl mx-auto px-4 py-10">
-        <PageHeader
-          title={title}
-          subtitle={subtitle}
-          backHref={`/${locale}/admin/articles`}
-          backText={backToList}
-        />
+        <PageHeader title={title} subtitle={subtitle} backHref={`/${locale}/admin/articles`} backText={backToList} />
         <Notice tone="error">{unauthorized}</Notice>
       </main>
     );
   }
 
-  /* Page */
+  // Page
   return (
     <main className="max-w-4xl mx-auto px-4 py-10">
-      <PageHeader
-        title={title}
-        subtitle={subtitle}
-        backHref={`/${locale}/admin/articles`}
-        backText={backToList}
-      />
+      <PageHeader title={title} subtitle={subtitle} backHref={`/${locale}/admin/articles`} backText={backToList} />
 
       <section
         className="rounded-xl border border-gray-200 dark:border-zinc-700 bg-white/70 dark:bg-zinc-900/70 p-3 md:p-4"
@@ -240,14 +220,49 @@ export default function NewArticlePage() {
       >
         <h2 id="editor-section" className="sr-only">Editor</h2>
 
-        {/* سكلاتون غني أثناء تحميل ArticleEditor */}
-        <Suspense fallback={<EditorSkeleton hint={editorLoading} />}>
-          <ArticleEditor
-            mode="create"
-            locale={locale}
-            onSaved={(slug) => router.push(`/${locale}/admin/articles/${slug}/edit`)}
-          />
-        </Suspense>
+        {/* 🌟 غلاف بسيط مع padding داخلي للمحرّر */}
+        <div className="editor-host rounded-lg p-3 md:p-4">
+          <Suspense fallback={<EditorSkeleton hint={editorLoading} />}>
+            <ArticleEditor
+              mode="create"
+              locale={locale}
+              // لا نمرّر page/status إطلاقاً
+              defaultData={{
+                slug: '',
+                title: { en: '', pl: '' },
+                excerpt: { en: '', pl: '' },
+                content: { en: '', pl: '' },
+                categoryId: '',
+                coverUrl: undefined,
+                videoUrl: undefined,
+                meta: undefined,
+              }}
+              onSaved={(slug: string) => router.push(`/${locale}/admin/articles/${slug}/edit`)}
+            />
+          </Suspense>
+        </div>
+
+        {/* 🎯 CSS لإخفاء أزرار/حقول Page و Status داخل الـEditor بدون تعديل المكوّن نفسه */}
+        <style jsx global>{`
+          /* استهدف العناصر الشائعة للأزرار/الحقول */
+          .editor-host [data-field="page"],
+          .editor-host [data-field="status"],
+          .editor-host [name="page"],
+          .editor-host [name="status"],
+          .editor-host [aria-label="Page"],
+          .editor-host [aria-label="Status"],
+          .editor-host .page-toggle,
+          .editor-host .status-toggle,
+          .editor-host .btn-page,
+          .editor-host .btn-status {
+            display: none !important;
+          }
+          /* لو كانت داخل fieldset */
+          .editor-host fieldset.page,
+          .editor-host fieldset.status {
+            display: none !important;
+          }
+        `}</style>
       </section>
     </main>
   );

@@ -74,7 +74,7 @@ const translations: Record<
     consentLabel:
       "Wyrażam zgodę na otrzymywanie wiadomości e-mail. Szczegóły w Polityce Prywatności.",
     consentRequired: "Aby się zapisać, zaznacz zgodę.",
-    home: "Strona główna",
+    home: "Home",
     articles: "Artykuły",
   },
 };

@@ -53,26 +53,29 @@ body {
     to { opacity: 1; transform: translateY(0); }
   }
 }
-/* اجبر الصور داخل المقال إنها تحترم الحجم اللي اتحطّ لها من المحرّر */
-.prose img {
-  display: inline-block;     /* ما تبقاش بلوك بطول السطر كله */
-  width: auto !important;    /* سيب التحكم للـstyle/العرض المضمَّن */
-  max-width: 100% !important;/* لكن ما تتخطّاش عرض الحاوية */
-  height: auto;              /* الحفاظ على النسبة */
+/* احترام حجم الصورة القادم من المحرّر */
+/* الحل: قم بتعديل القاعدة الموجودة لديك لتصبح هكذا */
+.prose img,
+.prose figure img {
+  /*
+   * ✨ هذا هو السطر الجديد والمهم ✨
+   * "revert" تطلب من المتصفح تجاهل العرض المحدد في .prose
+   * واستخدام العرض المحدد في style الخاص بالصورة.
+  */
+  width: revert;
+
+  /* احتفظ بهذين السطرين كما هما، فهما مهمان للتجاوب */
+  max-width: 100%;
+  height: auto;
 }
 
-/* اختياري: دعم محاذاة حسب سمات من المحرّر */
+/* محاذاة اختيارية من السمات (لو بتحب تستخدم data-align) */
 .prose img[data-align="left"]   { float: left;  margin: .25rem .75rem .5rem 0; }
 .prose img[data-align="right"]  { float: right; margin: .25rem 0 .5rem .75rem; }
 .prose img[data-align="center"] { display:block; margin-left:auto; margin-right:auto; float:none; }
 
-/* اختياري: زوايا دائرية وظل لو بتحطها من المحرّر */
+/* تأثيرات اختيارية */
 .prose img[data-rounded="1"] { border-radius: .5rem; }
 .prose img[data-shadow="1"]  { box-shadow: 0 6px 30px rgba(0,0,0,.18); }
 
-/* لو فيه clearfix بسيط للتفاف الصور اليسار/اليمين */
-.prose::after {
-  content: "";
-  display: table;
-  clear: both;
-}
+.prose::after { content:""; display:table; clear:both; }

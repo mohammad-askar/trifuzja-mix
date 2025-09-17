@@ -17,9 +17,6 @@ export default function ArticlesPageClient({ locale }: { locale: Locale }) {
     { _id: string; name: Record<Locale, string> }[]
   >('/api/categories', fetcher);
 
-  // هنا اختر مفتاح الصفحة المناسب (مثلاً 'multi')
-  const pageKey = 'multi' as const;
-
   return (
     <main className="min-h-screen px-4 pt-20 pb-16 max-w-6xl mx-auto">
       <h1 className="text-3xl font-bold mb-6">
@@ -32,10 +29,9 @@ export default function ArticlesPageClient({ locale }: { locale: Locale }) {
         locale={locale}
       />
 
-      {/* مرّر selected كسلسلة في الخاصية catsParam */}
+      {/* ✅ بدون pageKey */}
       <ArticlesList
         locale={locale}
-        pageKey={pageKey}
         catsParam={selected}
       />
     </main>

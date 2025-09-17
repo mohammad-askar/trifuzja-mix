@@ -4,71 +4,74 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import ArticleCard from '@/app/components/ArticleCard';
 import toast from 'react-hot-toast';
-import { PageKey } from '@/types/constants/pages';
 
 type Locale = 'en' | 'pl';
+
+type CoverPos = { x: number; y: number } | 'top' | 'center' | 'bottom';
 
 interface ArticleSummary {
   _id: string;
   slug: string;
-  title:   string | Record<Locale, string>;
+  title: string | Record<Locale, string>;
   excerpt: string | Record<Locale, string>;
   coverUrl?: string;
   readingTime?: string;
+  // ✅ لدعم موضع الغلاف المحفوظ
+  meta?: { coverPosition?: CoverPos };
 }
 
 interface Props {
   locale?: Locale;
-  pageKey: PageKey;
   catsParam?: string[] | string | null;
 }
 
+type ApiListResponse =
+  | ArticleSummary[]
+  | { articles?: ArticleSummary[]; total?: number };
+
 async function fetchPage(opts: {
   locale: Locale;
-  pageKey: PageKey;
   cats: string[];
   pageNo: number;
   limit: number;
   signal?: AbortSignal;
 }): Promise<{ list: ArticleSummary[]; total: number }> {
-  const { pageKey, cats, pageNo, limit, signal } = opts;
+  const { cats, pageNo, limit, signal } = opts;
+
   const qs = new URLSearchParams({
     pageNo: String(pageNo),
-    limit:  String(limit),
-    page:   pageKey,
+    limit: String(limit),
   });
-  cats.forEach(id => qs.append('cat', id));
+  cats.forEach((id) => qs.append('cat', id));
 
   const res = await fetch(`/api/articles?${qs}`, { signal });
-  if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
 
-  const data = await res.json();
+  const data: ApiListResponse = await res.json();
   return Array.isArray(data)
     ? { list: data, total: data.length }
     : { list: data.articles ?? [], total: data.total ?? 0 };
 }
 
-export default function ArticlesList({
-  locale = 'en',
-  pageKey,
-  catsParam,
-}: Props) {
+export default function ArticlesList({ locale = 'en', catsParam }: Props) {
   const cats = useMemo<string[]>(
-    () => catsParam == null
-      ? []
-      : Array.isArray(catsParam)
+    () =>
+      catsParam == null
+        ? []
+        : Array.isArray(catsParam)
         ? catsParam
         : [catsParam],
-    [catsParam]
+    [catsParam],
   );
 
   const LIMIT = 9;
-  const [items, setItems]  = useState<ArticleSummary[]>([]);
-  const [page,  setPage]   = useState(1);
-  const [total, setTotal]  = useState(0);
+  const [items, setItems] = useState<ArticleSummary[]>([]);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
   const [loading, setLoad] = useState(true);
-  const abortRef           = useRef<AbortController | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
+  // تحميل الصفحة الأولى + إعادة الضبط عند تغيّر الفلاتر
   useEffect(() => {
     abortRef.current?.abort();
     const controller = new AbortController();
@@ -78,7 +81,11 @@ export default function ArticlesList({
       setLoad(true);
       try {
         const { list, total } = await fetchPage({
-          locale, pageKey, cats, pageNo: 1, limit: LIMIT, signal: controller.signal,
+          locale,
+          cats,
+          pageNo: 1,
+          limit: LIMIT,
+          signal: controller.signal,
         });
         setItems(list);
         setTotal(total);
@@ -94,36 +101,43 @@ export default function ArticlesList({
     })();
 
     return () => controller.abort();
-  }, [locale, pageKey, cats]);
+  }, [locale, cats]);
 
+  // لانهائي: مراقبة العنصر الحارس
   const sentinel = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!sentinel.current) return;
-    const io = new IntersectionObserver(entries => {
-      if (!entries[0].isIntersecting || loading) return;
-      if (items.length >= total) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (!entries[0].isIntersecting || loading) return;
+        if (items.length >= total) return;
 
-      (async () => {
-        setLoad(true);
-        try {
-          const next = page + 1;
-          const { list } = await fetchPage({
-            locale, pageKey, cats, pageNo: next, limit: LIMIT,
-          });
-          setItems(prev => [...prev, ...list]);
-          setPage(next);
-        } catch (e) {
-          console.error(e);
-          toast.error((e as Error).message);
-        } finally {
-          setLoad(false);
-        }
-      })();
-    }, { rootMargin: '200px' });
+        (async () => {
+          setLoad(true);
+          try {
+            const next = page + 1;
+            const { list } = await fetchPage({
+              locale,
+              cats,
+              pageNo: next,
+              limit: LIMIT,
+            });
+            setItems((prev) => [...prev, ...list]);
+            setPage(next);
+          } catch (e) {
+            console.error(e);
+            toast.error((e as Error).message);
+          } finally {
+            setLoad(false);
+          }
+        })();
+      },
+      { rootMargin: '200px' },
+    );
 
     io.observe(sentinel.current);
     return () => io.disconnect();
-  }, [items, total, loading, locale, pageKey, cats, page]);
+  }, [items, total, loading, locale, cats, page]);
 
   const Skel = () => (
     <div className="rounded-2xl overflow-hidden bg-zinc-200 dark:bg-zinc-800 animate-pulse h-72" />
@@ -138,13 +152,12 @@ export default function ArticlesList({
           </p>
         )}
 
-        {items.map(a =>
+        {items.map((a) => (
           <ArticleCard key={a._id} article={a} locale={locale} />
-        )}
+        ))}
 
-        {loading && Array.from({ length: LIMIT }).map((_, i) =>
-          <Skel key={i} />
-        )}
+        {loading &&
+          Array.from({ length: LIMIT }).map((_, i) => <Skel key={i} />)}
       </section>
 
       <div ref={sentinel} aria-hidden="true" />

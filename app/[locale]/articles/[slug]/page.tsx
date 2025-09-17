@@ -6,12 +6,13 @@ import type { PageKey } from '@/types/constants/pages';
 import Image from 'next/image';
 import { Facebook, Twitter, Linkedin } from 'lucide-react';
 import DOMPurify from 'isomorphic-dompurify';
-import type { LucideIcon } from 'lucide-react';
 
-export const revalidate = 60; // ISR خفيف لصفحات المقالات
+export const revalidate = 0;
 
 type Locale = 'en' | 'pl';
 type Status = 'draft' | 'published';
+type LegacyCover = 'top' | 'center' | 'bottom';
+type CoverPosition = { x: number; y: number };
 
 interface ArticleDoc {
   slug: string;
@@ -26,6 +27,10 @@ interface ArticleDoc {
   createdAt: Date;
   updatedAt: Date;
   readingTime?: string;
+  meta?: {
+    coverPosition?: CoverPosition | LegacyCover;
+    [key: string]: unknown;
+  };
 }
 
 /* ----------------------- helpers ----------------------- */
@@ -58,29 +63,37 @@ function stripHtml(html: string): string {
   return html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
+function normalizeImageWidths(html: string): string {
+  return html;
+}
+
 function youtubeEmbed(url: string): string | null {
-  const watch = url.match(/[?&]v=([^&]+)/);
-  const short = url.match(/youtu\.be\/([^?&]+)/);
-  const embed = url.match(/youtube\.com\/embed\/([^?&]+)/);
-  const id = watch?.[1] ?? short?.[1] ?? embed?.[1] ?? null;
-  return id ? `https://www.youtube.com/embed/${id}` : null;
+  const match = url.match(/(?:[?&]v=|\/embed\/|youtu\.be\/)([^?&]+)/);
+  return match?.[1] ? `https://www.youtube.com/embed/${match[1]}` : null;
+}
+
+function toCoverXY(pos?: CoverPosition | LegacyCover): CoverPosition {
+  if (!pos) return { x: 50, y: 50 };
+  if (typeof pos === 'string') {
+    if (pos === 'top') return { x: 50, y: 0 };
+    if (pos === 'bottom') return { x: 50, y: 100 };
+    return { x: 50, y: 50 }; // center
+  }
+  return {
+    x: Math.max(0, Math.min(100, pos.x)),
+    y: Math.max(0, Math.min(100, pos.y)),
+  };
 }
 
 /* ----------------------- Metadata ------------------------ */
-export async function generateMetadata({
-  params,
-}: {
-  params: Promise<{ locale: Locale; slug: string }>;
-}): Promise<Metadata> {
-  const { slug, locale } = await params; // 👈 لازم await
+export async function generateMetadata(
+  { params }: { params: Promise<{ locale: Locale; slug: string }> }
+): Promise<Metadata> {
+  const { slug, locale } = await params;
   const art = await fetchArticle(slug);
 
   if (!art) {
-    return {
-      title: 'Not Found | Initiativa Autonoma',
-      description: 'Article not found',
-      robots: { index: false, follow: false },
-    };
+    return { title: 'Not Found', robots: { index: false } };
   }
 
   const title = pick(art.title, locale);
@@ -97,59 +110,48 @@ export async function generateMetadata({
       url: canonical,
       title,
       description: excerpt.slice(0, 200),
-      images: cover ? [{ url: cover }] : undefined,
+      images: cover ? [{ url: cover }] : [],
       locale: locale === 'pl' ? 'pl_PL' : 'en_GB',
     },
     twitter: {
       card: 'summary_large_image',
       title,
       description: excerpt.slice(0, 200),
-      images: cover ? [cover] : undefined,
+      images: cover ? [cover] : [],
     },
   };
 }
 
 /* ----------------------------- Page ---------------------------- */
-export default async function ArticlePage({
-  params,
-}: {
-  params: Promise<{ locale: Locale; slug: string }>;
-}) {
-  const { locale, slug } = await params; // 👈 لازم await
+export default async function ArticlePage(
+  { params }: { params: Promise<{ locale: Locale; slug: string }> }
+) {
+  const { locale, slug } = await params;
   const art = await fetchArticle(slug);
   if (!art) notFound();
 
   const title = pick(art.title, locale);
   const excerpt = pick(art.excerpt, locale);
-  const body = pick(art.content, locale);
-
-  const bodySafe = body
-    ? DOMPurify.sanitize(body, {
+  const rawBody = pick(art.content, locale);
+  const preSanitized = rawBody ? normalizeImageWidths(rawBody) : '';
+  const bodySafe = preSanitized
+    ? DOMPurify.sanitize(preSanitized, {
         USE_PROFILES: { html: true },
-        ADD_ATTR: ['style', 'data-align', 'data-rounded', 'data-shadow'],
+        ADD_ATTR: ['style', 'class'],
+        ADD_TAGS: ['figure'],
       })
     : '';
-
   const dateStr = new Date(art.createdAt).toLocaleDateString(
     locale === 'pl' ? 'pl-PL' : 'en-GB',
-    { year: 'numeric', month: 'long', day: 'numeric' },
+    { year: 'numeric', month: 'long', day: 'numeric' }
   );
+  const pageUrl = encodeURIComponent(absoluteUrl(`/${locale}/articles/${slug}`));
+  const coverPos = toCoverXY(art.meta?.coverPosition);
 
-  const pageUrl = encodeURIComponent(
-    absoluteUrl(`/${locale}/articles/${slug}`),
-  );
-
-  const SHARE_ICONS: ReadonlyArray<{
-    Icon: LucideIcon;
-    href: string;
-    label: string;
-    color: string;
-  }> = [
+  const SHARE_ICONS = [
     {
       Icon: Twitter,
-      href: `https://twitter.com/intent/tweet?url=${pageUrl}&text=${encodeURIComponent(
-        title,
-      )}`,
+      href: `https://twitter.com/intent/tweet?url=${pageUrl}&text=${encodeURIComponent(title)}`,
       label: 'Twitter',
       color: 'hover:bg-blue-500/20 text-blue-500',
     },
@@ -167,9 +169,7 @@ export default async function ArticlePage({
     },
   ];
 
-  const coverAbs = art.coverUrl
-    ? absoluteUrl(resolveSrc(art.coverUrl))
-    : undefined;
+  const coverAbs = art.coverUrl ? absoluteUrl(resolveSrc(art.coverUrl)) : undefined;
   const jsonLd = {
     '@context': 'https://schema.org',
     '@type': 'Article',
@@ -178,15 +178,12 @@ export default async function ArticlePage({
     datePublished: new Date(art.createdAt).toISOString(),
     dateModified: new Date(art.updatedAt).toISOString(),
     inLanguage: locale,
-    articleBody: stripHtml(body),
+    articleBody: stripHtml(rawBody || ''),
   };
 
   return (
     <article className="relative max-w-3xl mx-auto px-4 md:px-6 py-4">
-      {/* خلفية لطيفة */}
       <div className="absolute inset-0 -z-10 bg-gradient-to-b from-blue-50/60 via-transparent to-transparent dark:from-zinc-800/60" />
-
-      {/* شريط مشاركة جانبي (يظهر على md+) */}
       <aside className="hidden md:block md:fixed md:top-28 md:left-[max(12px,calc((100vw-768px)/2-64px))]">
         <ul className="flex md:flex-col gap-2">
           {SHARE_ICONS.map(({ Icon, href, label, color }) => (
@@ -205,9 +202,7 @@ export default async function ArticlePage({
         </ul>
       </aside>
 
-      {/* بطاقة المقال */}
       <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-xl overflow-hidden ring-1 ring-gray-100 dark:ring-zinc-800">
-        {/* الغلاف */}
         {art.coverUrl && (
           <div className="relative w-full h-60 md:h-80 overflow-hidden group">
             <Image
@@ -217,17 +212,15 @@ export default async function ArticlePage({
               priority
               sizes="(max-width: 768px) 100vw, 768px"
               className="object-cover transition-transform duration-500 group-hover:scale-105"
+              style={{ objectPosition: `${coverPos.x}% ${coverPos.y}%` }}
             />
           </div>
         )}
 
-        {/* المحتوى */}
         <div className="px-6 md:px-10 py-10 prose dark:prose-invert max-w-none">
-          <header className="mb-8">
-            <h1 className="text-4xl font-extrabold leading-tight tracking-tight">
-              {title}
-            </h1>
-            <div className="mt-4 flex flex-wrap gap-4 text-sm text-gray-600 dark:text-gray-400">
+          <header className="mb-1">
+            <h1 className="text-4xl font-extrabold leading-tight tracking-tight">{title}</h1>
+            <div className="mt-1 flex flex-wrap gap-4 text-sm text-gray-600 dark:text-gray-400">
               <time>{dateStr}</time>
               <span className="uppercase font-semibold bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300 px-2 py-0.5 rounded">
                 {art.page}
@@ -242,7 +235,6 @@ export default async function ArticlePage({
             </blockquote>
           )}
 
-          {/* فيديو (YouTube أو ملف) */}
           {art.videoUrl && (
             <div className="my-10 aspect-video rounded-lg overflow-hidden shadow-md ring-1 ring-gray-100 dark:ring-zinc-800">
               {youtubeEmbed(art.videoUrl) ? (
@@ -255,31 +247,19 @@ export default async function ArticlePage({
                   title="Embedded Video"
                 />
               ) : (
-                <video
-                  controls
-                  src={art.videoUrl}
-                  className="w-full h-full object-cover"
-                  preload="metadata"
-                />
+                <video controls src={art.videoUrl} className="w-full h-full object-cover" preload="metadata" />
               )}
             </div>
           )}
 
-          {/* متن المقال (مُعقَّم) */}
           {bodySafe ? (
-            <section
-              className="prose-headings:scroll-mt-24"
-              dangerouslySetInnerHTML={{ __html: bodySafe }}
-            />
+            <section className="prose-headings:scroll-mt-24" dangerouslySetInnerHTML={{ __html: bodySafe }} />
           ) : (
-            <p className="mt-8 italic text-center text-gray-500 dark:text-gray-400">
-              No content.
-            </p>
+            <p className="mt-8 italic text-center text-gray-500 dark:text-gray-400">No content.</p>
           )}
         </div>
       </div>
 
-      {/* شريط مشاركة سفلي (للموبايل) */}
       <footer className="max-w-3xl mx-auto mt-12 mb-4 flex md:hidden justify-center gap-6">
         {SHARE_ICONS.map(({ Icon, href, label, color }) => (
           <a
@@ -295,10 +275,8 @@ export default async function ArticlePage({
         ))}
       </footer>
 
-      {/* Structured Data */}
       <script
         type="application/ld+json"
-        // eslint-disable-next-line react/no-danger
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
     </article>

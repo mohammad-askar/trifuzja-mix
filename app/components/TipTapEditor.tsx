@@ -3,25 +3,25 @@
 'use client';
 
 import {
+  useState,
   useEffect,
   useRef,
-  useState,
+  useCallback,
   Dispatch,
   SetStateAction,
-  useCallback,
+  MouseEvent as ReactMouseEvent,
 } from 'react';
 import {
-  EditorContent,
   useEditor,
-  Editor,
-  NodeViewWrapper,
+  EditorContent,
   ReactNodeViewRenderer,
+  NodeViewWrapper,
 } from '@tiptap/react';
 import type { NodeViewProps } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
 import Link from '@tiptap/extension-link';
-import Image from '@tiptap/extension-image';
+import TiptapImage from '@tiptap/extension-image';
 import Placeholder from '@tiptap/extension-placeholder';
 import { TextStyle } from '@tiptap/extension-text-style';
 import { Color } from '@tiptap/extension-color';
@@ -29,22 +29,15 @@ import Highlight from '@tiptap/extension-highlight';
 import HorizontalRule from '@tiptap/extension-horizontal-rule';
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
 import { lowlight } from 'lowlight';
-import {
-  Table,
-  TableRow,
-  TableCell,
-  TableHeader,
-} from '@tiptap/extension-table';
+import { Table, TableRow, TableCell, TableHeader } from '@tiptap/extension-table';
 import CharacterCount from '@tiptap/extension-character-count';
-import { EditorView } from '@tiptap/pm/view';
+import { Node as ProseMirrorNode } from 'prosemirror-model';
+import { mergeAttributes } from '@tiptap/core';
 
 import { FontSize } from './editor/extensions/FontSize';
 import EditorMenuBar from './EditorMenuBar';
 
-/* ------------------------------------------------------------------ */
-/*                         أنواع وخصائص المكوّن                        */
-/* ------------------------------------------------------------------ */
-
+/* ---------------------------- أنواع المكوّن ---------------------------- */
 interface Props {
   content: string;
   setContent: Dispatch<SetStateAction<string>>;
@@ -53,7 +46,19 @@ interface Props {
   theme?: 'auto' | 'light' | 'dark';
 }
 
-/* رفع صورة وترجيع الرابط */
+type Align = 'left' | 'center' | 'right';
+
+type ImageAttributes = {
+  src: string | null;
+  alt: string | null;
+  title: string | null;
+  width: number;
+  align: Align;
+  rounded: boolean;
+  shadow: boolean;
+};
+
+/* --------------------------- رفع الصور API --------------------------- */
 async function uploadImage(file: File): Promise<string> {
   const fd = new FormData();
   fd.append('file', file);
@@ -63,135 +68,12 @@ async function uploadImage(file: File): Promise<string> {
   return json.url;
 }
 
-/* ------------------------------------------------------------------ */
-/*      امتداد صورة مع NodeView يدعم التحجيم والمحاذاة والستايل        */
-/* ------------------------------------------------------------------ */
-
-type Align = 'left' | 'center' | 'right';
-
-const ResizableImage = Image.extend({
-  name: 'image',
-
-  // نعرّف كل السمات صراحة (بدون this.parent)
-  addAttributes() {
-    return {
-      src: {
-        default: null as string | null,
-      },
-      alt: {
-        default: null as string | null,
-      },
-      title: {
-        default: null as string | null,
-      },
-      // نسبة العرض %
-      width: {
-        default: 100 as number,
-        parseHTML: (element: HTMLElement) => {
-          const style = element.getAttribute('style') ?? '';
-          const m = style.match(/width:\s*([\d.]+)%/);
-          return m ? Math.max(20, Math.min(100, Number(m[1]))) : 100;
-        },
-        renderHTML: (attrs: { width?: number }) => {
-          const w = Math.max(20, Math.min(100, Number(attrs.width ?? 100)));
-          return { style: `width:${w}%` };
-        },
-      },
-      align: {
-        default: 'center' as Align,
-        parseHTML: (element: HTMLElement) =>
-          (element.getAttribute('data-align') as Align | null) ?? 'center',
-        renderHTML: (attrs: { align?: Align }) => ({
-          'data-align': (attrs.align ?? 'center') as string,
-        }),
-      },
-      rounded: {
-        default: true as boolean,
-        parseHTML: (element: HTMLElement) =>
-          element.getAttribute('data-rounded') !== 'false',
-        renderHTML: (attrs: { rounded?: boolean }) => ({
-          'data-rounded': String(Boolean(attrs.rounded)),
-        }),
-      },
-      shadow: {
-        default: true as boolean,
-        parseHTML: (element: HTMLElement) =>
-          element.getAttribute('data-shadow') !== 'false',
-        renderHTML: (attrs: { shadow?: boolean }) => ({
-          'data-shadow': String(Boolean(attrs.shadow)),
-        }),
-      },
-    };
-  },
-
-  // HTML الناتج (يتضمن الكلاسات والمحاذاة والعرض)
-  renderHTML({
-    HTMLAttributes,
-  }: {
-    HTMLAttributes: Record<string, unknown>;
-  }) {
-    const attrs = HTMLAttributes as {
-      src?: string;
-      alt?: string;
-      title?: string;
-      width?: number;
-      align?: Align;
-      rounded?: boolean;
-      shadow?: boolean;
-      class?: string;
-    };
-
-    const w = Math.max(20, Math.min(100, Number(attrs.width ?? 100)));
-    const align = (attrs.align ?? 'center') as Align;
-    const rounded = attrs.rounded !== false;
-    const shadow = attrs.shadow !== false;
-
-    const cls = [
-      attrs.class ?? '',
-      'tiptap-img',
-      'block',
-      'max-w-full',
-      'h-auto',
-      align === 'left' ? 'float-left mr-4 my-2' : '',
-      align === 'right' ? 'float-right ml-4 my-2' : '',
-      align === 'center' ? 'mx-auto my-4' : '',
-      rounded ? 'rounded-xl' : '',
-      shadow ? 'shadow-md' : '',
-    ]
-      .filter(Boolean)
-      .join(' ')
-      .trim();
-
-    return [
-      'img',
-      {
-        ...attrs,
-        class: cls,
-        style: `width:${w}%`,
-      },
-    ];
-  },
-
-  addNodeView() {
-    return ReactNodeViewRenderer(ResizableImageView);
-  },
-});
-
-/* -------------------------- واجهة عرض الصورة ------------------------- */
-
+/* --------------------- NodeView لصورة قابلة للتحجيم -------------------- */
 function ResizableImageView(props: NodeViewProps) {
   const { node, updateAttributes, selected } = props;
   const wrapperRef = useRef<HTMLDivElement>(null);
 
-  // نقرأ السمات بطريقة آمنة (بدون any)
-  const nodeAttrs = node.attrs as {
-    src?: string;
-    alt?: string;
-    width?: number;
-    align?: Align;
-    rounded?: boolean;
-    shadow?: boolean;
-  };
+  const nodeAttrs = node.attrs as ImageAttributes;
 
   const src = String(nodeAttrs.src ?? '');
   const alt = nodeAttrs.alt ? String(nodeAttrs.alt) : '';
@@ -200,35 +82,36 @@ function ResizableImageView(props: NodeViewProps) {
   const rounded = nodeAttrs.rounded !== false;
   const shadow = nodeAttrs.shadow !== false;
 
-  // سحب يدوي لتغيير العرض
   const startX = useRef<number>(0);
   const startW = useRef<number>(width);
   const containerW = useRef<number>(0);
   const dragging = useRef<boolean>(false);
 
-  const onMouseDown = (e: React.MouseEvent<HTMLButtonElement>) => {
+  const onMouseDown = (e: ReactMouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
     dragging.current = true;
     startX.current = e.clientX;
     startW.current = width;
-    containerW.current = wrapperRef.current?.clientWidth ?? 0;
+    // استخدم عرض الحاوية الأب لضمان تحجيم صحيح
+    containerW.current =
+      wrapperRef.current?.parentElement?.clientWidth ??
+      wrapperRef.current?.clientWidth ??
+      0;
 
     const onMove = (ev: MouseEvent) => {
-      if (!dragging.current) return;
+      if (!dragging.current || containerW.current === 0) return;
       const dx = ev.clientX - startX.current;
-      const deltaPercent =
-        containerW.current > 0 ? (dx / containerW.current) * 100 : 0;
-      const next = Math.max(
-        20,
-        Math.min(100, Math.round(startW.current + deltaPercent)),
-      );
+      const deltaPercent = (dx / containerW.current) * 100;
+      const next = Math.round(Math.max(20, Math.min(100, startW.current + deltaPercent)));
       updateAttributes({ width: next });
     };
+
     const onUp = () => {
       dragging.current = false;
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
     };
+
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
   };
@@ -256,7 +139,8 @@ function ResizableImageView(props: NodeViewProps) {
           src={src}
           alt={alt}
           className={[
-            'block max-w-full h-auto select-none',
+            // 👇 مهم: w-full حتى تمتلئ الصورة الحاوية عند 100%
+            'block w-full h-auto select-none',
             rounded ? 'rounded-xl' : '',
             shadow ? 'shadow-md' : '',
             selected ? 'ring-2 ring-blue-500/60' : '',
@@ -266,23 +150,19 @@ function ResizableImageView(props: NodeViewProps) {
           draggable={false}
         />
 
-        {/* مقبض التحجيم */}
         <button
           type="button"
           onMouseDown={onMouseDown}
           title="Resize"
           aria-label="Resize"
-          className="absolute bottom-1 right-1 h-5 w-5 rounded-full bg-blue-600 text-white flex items-center justify-center shadow hover:bg-blue-700 cursor-ew-resize"
+          className="absolute bottom-1 right-1 h-5 w-5 rounded-full bg-blue-600 text-white flex items-center justify-center shadow hover:bg-blue-700 cursor-ew-resize opacity-0 group-hover:opacity-100 transition-opacity"
         >
           ↔
         </button>
 
-        {/* شريط تحكّم صغير يظهر عند التحديد */}
         {selected && (
-          <div className="absolute -bottom-10 left-1/2 -translate-x-1/2 flex items-center gap-2 rounded-lg border border-gray-200 dark:border-zinc-700 bg-white/95 dark:bg-zinc-900/95 backdrop-blur px-2 py-1 shadow">
-            <label className="text-[10px] text-gray-600 dark:text-gray-300">
-              W
-            </label>
+          <div className="absolute -bottom-10 left-1/2 -translate-x-1/2 flex items-center gap-2 rounded-lg border border-gray-200 dark:border-zinc-700 bg-white/95 dark:bg-zinc-900/95 backdrop-blur px-2 py-1 shadow z-10">
+            <label className="text-[10px] text-gray-600 dark:text-gray-300">W</label>
             <input
               type="range"
               min={20}
@@ -291,12 +171,8 @@ function ResizableImageView(props: NodeViewProps) {
               value={width}
               onChange={(e) => updateAttributes({ width: Number(e.target.value) })}
             />
-            <span className="text-[10px] w-10 text-right tabular-nums">
-              {width}%
-            </span>
-
+            <span className="text-[10px] w-10 text-right tabular-nums">{width}%</span>
             <div className="h-5 w-px bg-gray-200 dark:bg-zinc-700" />
-
             <button
               type="button"
               title="Align left"
@@ -333,9 +209,7 @@ function ResizableImageView(props: NodeViewProps) {
             >
               R
             </button>
-
             <div className="h-5 w-px bg-gray-200 dark:bg-zinc-700" />
-
             <button
               type="button"
               title="Rounded corners"
@@ -367,10 +241,97 @@ function ResizableImageView(props: NodeViewProps) {
   );
 }
 
-/* ------------------------------------------------------------------ */
-/*                          المكوّن الرئيسي                           */
-/* ------------------------------------------------------------------ */
+/* ---------------------- امتداد Image المخصص (Fixed) --------------------- */
+const ResizableImage = TiptapImage.extend({
+  name: 'image',
 
+  addOptions() {
+    return {
+      ...TiptapImage.options,
+      inline: false,
+      allowBase64: true,
+    };
+  },
+
+  addAttributes() {
+    // ✅ نمط آمن لأنواع TipTap: this.parent غير معرفة في الـ types
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const parent = (this as any).parent?.() ?? {};
+
+    return {
+      ...parent,
+      width: {
+        default: 100,
+        parseHTML: (element: HTMLElement): number => {
+          const style = element.getAttribute('style') ?? '';
+          const match = style.match(/width:\s*([\d.]+)%/);
+          return match?.[1] ? parseFloat(match[1]) : 100;
+        },
+      },
+      align: {
+        default: 'center',
+        parseHTML: (element: HTMLElement): Align =>
+          ((element.getAttribute('data-align') as Align | null) ?? 'center'),
+        renderHTML: (attributes: ImageAttributes) => ({
+          'data-align': attributes.align ?? 'center',
+        }),
+      },
+      rounded: {
+        default: true,
+        parseHTML: (element: HTMLElement): boolean =>
+          element.getAttribute('data-rounded') !== 'false',
+        renderHTML: (attributes: ImageAttributes) => ({
+          'data-rounded': String(attributes.rounded ?? true),
+        }),
+      },
+      shadow: {
+        default: true,
+        parseHTML: (element: HTMLElement): boolean =>
+          element.getAttribute('data-shadow') !== 'false',
+        renderHTML: (attributes: ImageAttributes) => ({
+          'data-shadow': String(attributes.shadow ?? true),
+        }),
+      },
+    };
+  },
+
+  renderHTML({
+    node,
+    HTMLAttributes,
+  }: {
+    node: ProseMirrorNode;
+    HTMLAttributes: Record<string, unknown>;
+  }) {
+    const { width, align, rounded, shadow } = node.attrs as ImageAttributes;
+    const sanitizedWidth = Math.max(20, Math.min(100, Number(width ?? 100)));
+
+    const classString = [
+      'tiptap-img',
+      // 👇 مهم: w-full هنا أيضًا لإخراج HTML العرضي (للقراءة) بحيث يملأ الحاوية
+      'block w-full h-auto',
+      align === 'left' ? 'float-left mr-4 my-2' : '',
+      align === 'right' ? 'float-right ml-4 my-2' : '',
+      align === 'center' ? 'mx-auto my-4' : '',
+      rounded ? 'rounded-xl' : '',
+      shadow ? 'shadow-md' : '',
+    ]
+      .filter(Boolean)
+      .join(' ');
+
+    const finalAttrs = mergeAttributes(HTMLAttributes, {
+      class: classString,
+      style: `width: ${sanitizedWidth}%;`,
+    });
+
+    return ['img', finalAttrs];
+  },
+
+  addNodeView() {
+    return ReactNodeViewRenderer(ResizableImageView);
+  },
+});
+
+/* ---------------------------- المكوّن الرئيسي --------------------------- */
 export default function TipTapEditor({
   content,
   setContent,
@@ -387,21 +348,6 @@ export default function TipTapEditor({
         document.documentElement.classList.contains('dark')
       : theme === 'dark';
 
-const insertImg = useCallback(
-  (ed: Editor, url: string, altText?: string) => {
-    ed
-      .chain()
-      .focus()
-      // أرسل الخصائص القياسية فقط
-      .setImage({ src: url, alt: altText ?? '' })
-      // ثم عيّن خصائصك الإضافية بأمان
-      .updateAttributes('image', { width: 60, align: 'center' as const })
-      .run();
-  },
-  [],
-);
-
-
   const editor = useEditor({
     extensions: [
       StarterKit.configure({ heading: { levels: [1, 2, 3] } }),
@@ -409,11 +355,8 @@ const insertImg = useCallback(
       TextStyle,
       Color,
       FontSize,
-      Link.configure({ autolink: true }),
-      ResizableImage.configure({
-        inline: false,
-        allowBase64: true,
-      }),
+      Link.configure({ autolink: true, openOnClick: false }),
+      ResizableImage,
       Placeholder.configure({ placeholder }),
       Highlight,
       HorizontalRule,
@@ -428,70 +371,83 @@ const insertImg = useCallback(
       TableRow,
       TableHeader,
       TableCell,
-      CharacterCount.configure({ limit: 5000 }),
+      CharacterCount.configure({ limit: 50000 }),
     ],
     content,
-    onUpdate: ({ editor }) => setContent(editor.getHTML()),
+    onUpdate: ({ editor: ed }) => setContent(ed.getHTML()),
     editorProps: {
-      handleDrop(view: EditorView, ev) {
-        const file = ev.dataTransfer?.files?.[0];
-        if (file?.type.startsWith('image/')) {
-          ev.preventDefault();
-          (async () => {
-            setUploading(true);
-            try {
-              const url = await uploadImage(file);
-              insertImg(
-                (view as unknown as { editor: Editor }).editor,
-                url,
-                file.name,
-              );
-            } finally {
-              setUploading(false);
-            }
-          })();
+      attributes: {
+        class:
+          'prose dark:prose-invert max-w-none focus:outline-none p-3 md:p-4',
+      },
+      handleDrop: (view, event) => {
+        const files = event.dataTransfer?.files;
+        if (!files || files.length === 0) return false;
+        const file = files[0];
+        if (file.type.startsWith('image/')) {
+          event.preventDefault();
+          handleImageUpload(file);
           return true;
         }
         return false;
-      },
-      attributes: {
-        class: [
-          'focus:outline-none max-w-none',
-          `min-h-[${minHeightPx}px]`,
-          'p-3 rounded border',
-          dark
-            ? 'prose prose-invert bg-zinc-900/90 border-zinc-700'
-            : 'prose bg-white border-zinc-300',
-          'prose-base',
-        ].join(' '),
       },
     },
     immediatelyRender: false,
   });
 
-  // مزامنة خارجيّة
+  const insertImg = useCallback(
+    (url: string, altText?: string) => {
+      if (!editor || editor.isDestroyed) return;
+      editor
+        .chain()
+        .focus()
+        .setImage({ src: url, alt: altText ?? '' })
+        .updateAttributes('image', { width: 60, align: 'center' as const })
+        .run();
+    },
+    [editor],
+  );
+
+  const handleImageUpload = useCallback(
+    async (file: File) => {
+      if (file.size > 5 * 1024 * 1024) {
+        alert('Max file size is 5 MB');
+        return;
+      }
+      setUploading(true);
+      try {
+        const url = await uploadImage(file);
+        insertImg(url, file.name);
+      } catch (err) {
+        console.error('Image upload failed:', err);
+      } finally {
+        setUploading(false);
+      }
+    },
+    [insertImg],
+  );
+
+  // حدّث محتوى المحرر عند تغيّر prop content من الخارج
   useEffect(() => {
-    if (editor && editor.getHTML() !== content) {
+    if (editor && !editor.isDestroyed && editor.getHTML() !== content) {
       editor.commands.setContent(content, { emitUpdate: false });
     }
   }, [content, editor]);
 
-  // لصق صورة من الحافظة
+  // لصق الصور من الحافظة
   useEffect(() => {
     const onPaste = (e: ClipboardEvent) => {
       const file = Array.from(e.clipboardData?.files ?? []).find((f) =>
         f.type.startsWith('image/'),
       );
-      if (!file || !editor) return;
-      e.preventDefault();
-      setUploading(true);
-      uploadImage(file)
-        .then((url) => insertImg(editor, url, file.name))
-        .finally(() => setUploading(false));
+      if (file) {
+        e.preventDefault();
+        handleImageUpload(file);
+      }
     };
     document.addEventListener('paste', onPaste);
     return () => document.removeEventListener('paste', onPaste);
-  }, [editor, insertImg]);
+  }, [handleImageUpload]);
 
   if (!editor) {
     return (
@@ -507,57 +463,37 @@ const insertImg = useCallback(
     );
   }
 
-  const openDialog = () => fileInput.current?.click();
-
   return (
     <div
       className={`rounded-md border shadow ${
-        dark ? 'bg-zinc-950/90 border-zinc-700' : 'bg-white border-zinc-300'
+        dark ? 'bg-zinc-900/90 border-zinc-700' : 'bg-white border-zinc-300'
       }`}
     >
-      {/* Toolbar */}
-      <div
-        className={`flex items-center gap-2 border-b px-3 py-2 sticky top-0 backdrop-blur z-10 ${
-          dark ? 'bg-zinc-900/80 border-zinc-700' : 'bg-white/80 border-zinc-200'
-        }`}
-      >
-        <EditorMenuBar
-          editor={editor}
-          onInsertImage={openDialog}
-          uploadingImage={uploading}
-        />
-        <span
-          className={`ml-auto text-xs ${
-            editor.storage.characterCount.characters() > 5000
-              ? 'text-red-600'
-              : 'text-gray-500 dark:text-zinc-400'
+      <EditorMenuBar
+        editor={editor}
+        onInsertImage={() => fileInput.current?.click()}
+        uploadingImage={uploading}
+      />
+
+      <div className="p-1">
+        <div
+          style={{ minHeight: minHeightPx }}
+          className={`rounded border ${
+            dark ? 'bg-zinc-900 border-zinc-700' : 'bg-white border-zinc-300'
           }`}
         >
-          {editor.storage.characterCount.characters()} / 5000
-        </span>
+          <EditorContent editor={editor} />
+        </div>
       </div>
 
-      {/* Content */}
-      <div className="px-3 py-2">
-        <EditorContent editor={editor} />
-      </div>
-
-      {/* Hidden file input */}
       <input
         ref={fileInput}
         type="file"
         accept="image/*"
         hidden
-        onChange={async (e) => {
-          const f = e.target.files?.[0];
-          if (!f || !editor) return;
-          if (f.size > 5 * 1024 * 1024) return alert('Max 5 MB');
-          setUploading(true);
-          try {
-            const url = await uploadImage(f);
-            insertImg(editor, url, f.name);
-          } finally {
-            setUploading(false);
+        onChange={(e) => {
+          if (e.target.files?.[0]) {
+            handleImageUpload(e.target.files[0]);
           }
         }}
       />

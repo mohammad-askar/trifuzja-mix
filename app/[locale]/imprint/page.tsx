@@ -1,4 +1,4 @@
-//E:\trifuzja-mix\app\[locale]\imprint\page.tsx
+// app/[locale]/imprint/page.tsx
 import type { Metadata } from 'next';
 
 type Locale = 'en' | 'pl';
@@ -193,7 +193,6 @@ export default async function ImprintPage({
       {/* JSON-LD */}
       <script
         type="application/ld+json"
-        // eslint-disable-next-line react/no-danger
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
     </main>

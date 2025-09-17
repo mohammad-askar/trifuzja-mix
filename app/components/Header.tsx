@@ -131,11 +131,16 @@ const navLinks: NavLink[] = raw.filter(Boolean) as NavLink[];
           ))}
 
           {session && (
-            <button onClick={()=>signOut({callbackUrl:`/${locale}`})}
-                    className="flex items-center gap-2 px-3 py-1 rounded-md hover:bg-white/5 transition">
-              <LogOut className="w-4 h-4"/>{t.logout}
-            </button>
-          )}
+  <button
+    onClick={() => signOut({ callbackUrl: `/${locale}` })}
+    className="flex items-center gap-2 px-3 py-1 rounded-md transition
+               hover:bg-white/5 hover:text-blue-300
+               focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40"
+  >
+    <LogOut className="w-4 h-4" />
+    {t.logout}
+  </button>
+)}
 
           {/* language switcher */}
           <div className="relative ml-2" ref={langRef}>

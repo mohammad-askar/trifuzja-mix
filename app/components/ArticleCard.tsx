@@ -5,6 +5,13 @@ import { useState, useCallback } from 'react';
 
 type Locale = 'en' | 'pl';
 
+type CoverPos = { x: number; y: number } | 'top' | 'center' | 'bottom';
+
+interface ArticleMeta {
+  coverPosition?: CoverPos;
+  [key: string]: unknown;
+}
+
 interface Article {
   _id: string;
   slug: string;
@@ -12,19 +19,20 @@ interface Article {
   excerpt?: string | Record<Locale, string>;
   coverUrl?: string;
   readingTime?: string;
+  meta?: ArticleMeta; // ✅ لدعم موضع الصورة
 }
 
 interface Props {
   article: Article;
   locale: Locale;
-  /** نجعل الأولويات قابلة للاختيار (مثلاً أول 3 بطاقات) */
+  /** نجعل الأولوية قابلة للاختيار (مثلاً أول 3 بطاقات) */
   priority?: boolean;
 }
 
 /* 🔧 دالة استخراج نص اللغة */
 const pickText = (
   field: string | Record<Locale, string> | undefined,
-  locale: Locale
+  locale: Locale,
 ): string =>
   !field
     ? ''
@@ -35,24 +43,36 @@ const pickText = (
 /* 🔧 دالة لضمان مسار صورة صالح */
 const safeImageSrc = (src?: string): string => {
   if (!src) return '/images/placeholder.png';
-  // لو رابط قصير أو ليس صورة – fallback
   if (src.length < 5) return '/images/placeholder.png';
   return src;
 };
 
+/* 🔧 تحويل coverPosition إلى قيمة object-position صالحة */
+function resolveObjectPosition(pos?: CoverPos): string {
+  if (!pos) return '50% 50%';
+  if (typeof pos === 'string') {
+    if (pos === 'top') return '50% 0%';
+    if (pos === 'bottom') return '50% 100%';
+    return '50% 50%'; // center أو أي قيمة غير معروفة
+  }
+  const clamp = (n: number) => Math.max(0, Math.min(100, n));
+  return `${clamp(pos.x)}% ${clamp(pos.y)}%`;
+}
+
 export default function ArticleCard({ article, locale, priority = false }: Props) {
-  const title   = pickText(article.title, locale);
+  const title = pickText(article.title, locale);
   const excerpt = pickText(article.excerpt, locale);
   const initialSrc = safeImageSrc(article.coverUrl);
 
   // 🧪 حالة fallback عند فشل التحميل
   const [imgSrc, setImgSrc] = useState(initialSrc);
   const onImgError = useCallback(() => {
-    // لا تكرّر التعيين لو هو بالفعل placeholder
     if (!imgSrc.includes('/images/placeholder.png')) {
       setImgSrc('/images/placeholder.png');
     }
   }, [imgSrc]);
+
+  const objectPosition = resolveObjectPosition(article.meta?.coverPosition);
 
   return (
     <Link
@@ -75,7 +95,7 @@ export default function ArticleCard({ article, locale, priority = false }: Props
           priority={priority}
           onError={onImgError}
           className="object-cover transition-transform duration-300 group-hover:scale-105"
-          // يمكنك إضافة blurDataURL مخصص لاحقاً
+          style={{ objectPosition }}
           placeholder={imgSrc.includes('/placeholder') ? 'empty' : 'empty'}
         />
         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/25 to-transparent pointer-events-none" />
@@ -103,7 +123,7 @@ export default function ArticleCard({ article, locale, priority = false }: Props
           {excerpt || '—'}
         </p>
 
-        {/* CTA خفيف – يمكن إزالته لو تحب البساطة */}
+        {/* CTA خفيف */}
         <span
           className="mt-auto inline-flex items-center gap-1 text-xs font-medium
                      text-blue-600 dark:text-blue-400 group-hover:underline"
@@ -115,9 +135,7 @@ export default function ArticleCard({ article, locale, priority = false }: Props
             fill="currentColor"
             aria-hidden="true"
           >
-            <path
-              d="M12.293 5.293a1 1 0 011.414 0L18 9.586l-4.293 4.293a1 1 0 01-1.414-1.414L14.586 11H4a1 1 0 110-2h10.586l-2.293-2.293a1 1 0 010-1.414z"
-            />
+            <path d="M12.293 5.293a1 1 0 011.414 0L18 9.586l-4.293 4.293a1 1 0 01-1.414-1.414L14.586 11H4a1 1 0 110-2h10.586l-2.293-2.293a1 1 0 010-1.414z" />
           </svg>
         </span>
       </div>

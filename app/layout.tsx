@@ -13,16 +13,23 @@ const geistMono = Geist_Mono({ variable: '--font-geist-mono', subsets: ['latin']
 export const metadata: Metadata = {
   title: 'Initiativa Autonoma',
   description: 'Read articles in English and Polish',
+  icons: {
+    icon: [
+      { url: '/favicon.ico', sizes: 'any' },
+      { url: '/favicon-32x32.png', type: 'image/png', sizes: '32x32' },
+      { url: '/favicon-16x16.png', type: 'image/png', sizes: '16x16' },
+    ],
+    apple: [{ url: '/apple-touch-icon.png', sizes: '180x180' }],
+  },
+  manifest: '/site.webmanifest',
 };
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
-  // جلب الجلسة على الخادم
   const session = await getServerSession(authOptions);
 
   return (
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        {/* مرّر الجلسة للـ SessionProvider */}
         <Providers session={session}>
           {children}
         </Providers>
