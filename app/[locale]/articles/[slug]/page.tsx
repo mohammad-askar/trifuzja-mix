@@ -217,10 +217,10 @@ export default async function ArticlePage(
           </div>
         )}
 
-        <div className="px-6 md:px-10 py-10 prose dark:prose-invert max-w-none">
+        <div className="px-6 md:px-4 py-3 prose dark:prose-invert max-w-none">
           <header className="mb-1">
             <h1 className="text-4xl font-extrabold leading-tight tracking-tight">{title}</h1>
-            <div className="mt-1 flex flex-wrap gap-4 text-sm text-gray-600 dark:text-gray-400">
+            <div className="mt-2 flex flex-wrap gap-4 text-sm text-gray-600 dark:text-gray-400">
               <time>{dateStr}</time>
               <span className="uppercase font-semibold bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300 px-2 py-0.5 rounded">
                 {art.page}
@@ -230,7 +230,7 @@ export default async function ArticlePage(
           </header>
 
           {excerpt && (
-            <blockquote className="border-l-4 border-blue-500 pl-5 italic text-gray-700 dark:text-gray-300 bg-blue-50/40 dark:bg-blue-900/40 p-4 rounded-md shadow-sm">
+            <blockquote className="mb-6 border-l-4 border-blue-500 pl-5 italic text-gray-700 dark:text-gray-300 bg-blue-50/40 dark:bg-blue-900/40 p-4 rounded-md shadow-sm">
               {excerpt}
             </blockquote>
           )}
