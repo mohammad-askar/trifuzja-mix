@@ -8,14 +8,19 @@ import { useConfirm } from '@/components/ui/useConfirm';
 import toast from 'react-hot-toast';
 
 /* ---------- Types ---------- */
+type Locale = 'en' | 'pl';
+
+/** لو عندك مقالات قديمة بحالات مختلفة، نسمح بها للقراءة فقط */
+type ArticleStatus = 'published' | 'draft' | 'archived' | 'review' | 'scheduled';
+
 type ArticleRow = {
   id: string;
   slug: string;
   title: string;
-  status: 'draft' | 'published' | 'archived' | 'review' | 'scheduled';
+  status: ArticleStatus;   // عمليًا عندك الآن "published" فقط
   createdAt?: string;
   updatedAt?: string;
-  locale: string;
+  locale: Locale;          // كان string — ضبطناه
 };
 
 interface Props {
@@ -23,18 +28,30 @@ interface Props {
 }
 
 /* ---------- Helpers ---------- */
-const formatDate = (iso?: string) =>
-  iso ? new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '—';
+const formatDate = (iso?: string): string =>
+  iso
+    ? new Date(iso).toLocaleDateString(undefined, {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+      })
+    : '—';
 
-const statusBadge = (status: ArticleRow['status']) => {
+const statusBadgeClass = (status: ArticleStatus): string => {
   const base = 'inline-block px-2 py-0.5 rounded text-xs font-semibold';
   switch (status) {
-    case 'published':  return `${base} bg-green-100 text-green-700 dark:bg-green-700/20 dark:text-green-400`;
-    case 'draft':      return `${base} bg-yellow-100 text-yellow-800 dark:bg-yellow-700/20 dark:text-yellow-300`;
-    case 'review':     return `${base} bg-purple-100 text-purple-700 dark:bg-purple-700/20 dark:text-purple-400`;
-    case 'scheduled':  return `${base} bg-blue-100 text-blue-700 dark:bg-blue-700/20 dark:text-blue-400`;
-    case 'archived':   return `${base} bg-gray-200 text-gray-600 dark:bg-gray-700/30 dark:text-gray-400`;
-    default:           return base;
+    case 'published':
+      return `${base} bg-green-100 text-green-700 dark:bg-green-700/20 dark:text-green-400`;
+    case 'draft':
+      return `${base} bg-yellow-100 text-yellow-800 dark:bg-yellow-700/20 dark:text-yellow-300`;
+    case 'review':
+      return `${base} bg-purple-100 text-purple-700 dark:bg-purple-700/20 dark:text-purple-400`;
+    case 'scheduled':
+      return `${base} bg-blue-100 text-blue-700 dark:bg-blue-700/20 dark:text-blue-400`;
+    case 'archived':
+      return `${base} bg-gray-200 text-gray-600 dark:bg-gray-700/30 dark:text-gray-400`;
+    default:
+      return base;
   }
 };
 
@@ -44,7 +61,7 @@ export default function AdminArticlesTable({ initial }: Props) {
   const { confirm, ConfirmModal } = useConfirm();
   const [busyId, setBusyId] = useState<string | null>(null);
 
-  const deleteArticle = async (id: string, slug: string) => {
+  async function deleteArticle(id: string, slug: string): Promise<void> {
     const ok = await confirm({
       title: 'Delete article',
       message: `Do you really want to delete “${slug}”?`,
@@ -55,25 +72,46 @@ export default function AdminArticlesTable({ initial }: Props) {
 
     try {
       setBusyId(id);
-      const res = await fetch(`/api/admin/articles/${slug}`, { method: 'DELETE' });
+      const res = await fetch(`/api/admin/articles/${encodeURIComponent(slug)}`, {
+        method: 'DELETE',
+      });
 
-      if (!res.ok) {
-        const { error } = await res.json().catch(() => ({ error: res.statusText }));
-        throw new Error(error);
+      // حاول قراءة رسالة واضحة من الـ API
+      let errorMsg = res.statusText;
+      try {
+        const json: unknown = await res.json();
+        if (
+          json &&
+          typeof json === 'object' &&
+          'error' in json &&
+          typeof (json as { error?: unknown }).error === 'string'
+        ) {
+          errorMsg = (json as { error: string }).error;
+        }
+      } catch {
+        /* تجاهل فشل JSON — نستعمل statusText بدلًا منه */
       }
 
+      if (!res.ok) throw new Error(errorMsg || 'Delete failed');
+
       toast.success('Article deleted');
-      router.refresh();           // re‑fetch server data
+      router.refresh(); // re-fetch server data
     } catch (e) {
-      toast.error((e as Error).message);
+      toast.error(e instanceof Error ? e.message : 'Delete failed');
     } finally {
       setBusyId(null);
     }
-  };
+  }
 
   const rows = initial.result.items;
-  if (rows.length === 0)
-    return <p className="text-center text-sm text-zinc-500 py-8">No articles found.</p>;
+
+  if (rows.length === 0) {
+    return (
+      <p className="text-center text-sm text-zinc-500 py-8">
+        No articles found.
+      </p>
+    );
+  }
 
   return (
     <>
@@ -89,11 +127,13 @@ export default function AdminArticlesTable({ initial }: Props) {
           </thead>
 
           <tbody>
-            {rows.map(row => (
+            {rows.map((row) => (
               <tr key={row.id} className="border-t border-white/5">
                 <td className="px-4 py-2 font-medium">{row.title}</td>
                 <td className="px-4 py-2">
-                  <span className={statusBadge(row.status)}>{row.status}</span>
+                  <span className={statusBadgeClass(row.status)}>
+                    {row.status}
+                  </span>
                 </td>
                 <td className="px-4 py-2">{formatDate(row.createdAt)}</td>
 
@@ -117,7 +157,7 @@ export default function AdminArticlesTable({ initial }: Props) {
                     variant="destructive"
                     size="xs"
                     disabled={busyId === row.id}
-                    onClick={() => deleteArticle(row.id, row.slug)}
+                    onClick={() => void deleteArticle(row.id, row.slug)}
                   >
                     {busyId === row.id ? 'Deleting…' : 'Delete'}
                   </Button>

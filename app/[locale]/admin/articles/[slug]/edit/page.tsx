@@ -14,10 +14,9 @@ import { ArrowLeft, Eye, Trash2, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import ConfirmDelete from '@/app/components/ConfirmDelete';
 
-const ArticleEditor = dynamic(
-  () => import('@/app/components/ArticleEditor'),
-  { ssr: false },
-);
+const ArticleEditor = dynamic(() => import('@/app/components/ArticleEditor'), {
+  ssr: false,
+});
 
 interface FetchState {
   loading: boolean;
@@ -30,32 +29,34 @@ interface RouteParams extends Record<string, string> {
   locale: string;
 }
 
+/* ---------- helpers ---------- */
+
 function pickStringLocale(value: unknown, loc: string): string | undefined {
   if (!value) return undefined;
   if (typeof value === 'string') return value;
   if (typeof value === 'object' && value !== null) {
     const rec = value as Record<string, unknown>;
-    const get = (k: string) => {
+    const take = (k: string) => {
       const v = rec[k];
-      return typeof v === 'string' ? v : undefined;
+      return typeof v === 'string' && v.trim() ? v : undefined;
     };
-    return get(loc) ?? get('en') ?? (Object
-      .values(rec)
-      .find(v => typeof v === 'string') as string | undefined);
+    return take(loc) ?? take('pl') ?? take('en') ?? (Object.values(rec).find(v => typeof v === 'string') as string | undefined);
   }
   return undefined;
 }
 
+/** Ensure we always return a {en, pl} record, duplicating when needed. */
 function toLocaleRecord(
   value: string | Record<string, string> | undefined,
+  fallback?: string,
 ): Record<'en' | 'pl', string> {
   if (typeof value === 'string') {
-    return { en: value, pl: value };
+    const v = value ?? '';
+    return { en: v, pl: v };
   }
-  return {
-    en: value?.en || '',
-    pl: value?.pl || '',
-  };
+  const en = value?.en ?? fallback ?? '';
+  const pl = value?.pl ?? fallback ?? en;
+  return { en, pl };
 }
 
 function normalize(api: ArticleFromApi, loc: Locale): ArticleEditable {
@@ -70,15 +71,19 @@ function normalize(api: ArticleFromApi, loc: Locale): ArticleEditable {
   const status: ArticleStatus =
     api.status === 'draft' || api.status === 'published' ? api.status : 'draft';
 
-  const description =
-    pickStringLocale(api.excerpt, loc) ||
-    pickStringLocale(api.meta?.description, loc) ||
-    undefined;
+  // Title / Excerpt can be string or record — normalize to {en, pl}
+  const titleRec = toLocaleRecord(api.title);
 
+  // Content can be record or string; if only contentHtml exists, duplicate to both
   const contentHtml =
     typeof api.contentHtml === 'string'
       ? api.contentHtml
       : pickStringLocale(api.content, loc) || '';
+
+  const contentRecRaw =
+    typeof api.content === 'string' || (api.content && typeof api.content === 'object')
+      ? toLocaleRecord(api.content as string | Record<string, string>)
+      : toLocaleRecord(undefined, contentHtml);
 
   const categories = api.categoryId
     ? [api.categoryId]
@@ -88,10 +93,10 @@ function normalize(api: ArticleFromApi, loc: Locale): ArticleEditable {
 
   return {
     slug: api.slug,
-    title: toLocaleRecord(api.title),
-    description,
-    contentHtml,
-    contentRaw: toLocaleRecord(api.content),
+    title: titleRec,
+    description: pickStringLocale(api.excerpt, loc) ?? pickStringLocale(api.meta?.description, loc),
+    contentHtml,                 // string (for live preview if your editor uses it)
+    contentRaw: contentRecRaw,   // {en, pl} — always populated
     locale: loc,
     pageKey,
     status,
@@ -104,6 +109,8 @@ function normalize(api: ArticleFromApi, loc: Locale): ArticleEditable {
     meta: api.meta,
   };
 }
+
+/* ---------- page ---------- */
 
 export default function EditArticlePage() {
   const router = useRouter();
@@ -119,11 +126,10 @@ export default function EditArticlePage() {
     article: null,
   });
 
-  // حوار التأكيد (باستخدام ConfirmDelete)
   const [dlgOpen, setDlgOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  const t = (en: string, pl: string) => (locale === 'pl' ? pl : en);
+  const t = (enText: string, plText: string) => (locale === 'pl' ? plText : enText);
 
   const load = useCallback(() => {
     if (!slug) return;
@@ -132,28 +138,17 @@ export default function EditArticlePage() {
 
     (async () => {
       try {
-        const res = await fetch(
-          `/api/admin/articles/${encodeURIComponent(slug)}/edit`,
-          { cache: 'no-store', signal: controller.signal },
-        );
-        let json: unknown;
-        try {
-          json = await res.json();
-        } catch {
-          throw new Error('Invalid JSON');
-        }
-        if (!res.ok) {
+        const res = await fetch(`/api/admin/articles/${encodeURIComponent(slug)}/edit`, {
+          cache: 'no-store',
+          signal: controller.signal,
+        });
+        const json = (await res.json().catch(() => null)) as unknown;
+        if (!res.ok || !json || typeof json !== 'object') {
           const msg =
-            typeof json === 'object' &&
-            json !== null &&
-            'error' in json &&
-            typeof (json as { error?: unknown }).error === 'string'
+            (json && 'error' in (json as Record<string, unknown>) && typeof (json as { error?: unknown }).error === 'string'
               ? (json as { error: string }).error
-              : `HTTP ${res.status}`;
+              : `HTTP ${res.status}`) || 'Invalid response';
           throw new Error(msg);
-        }
-        if (typeof json !== 'object' || json === null) {
-          throw new Error('Malformed payload');
         }
         const editable = normalize(json as ArticleFromApi, locale);
         setState({ loading: false, error: null, article: editable });
@@ -178,25 +173,21 @@ export default function EditArticlePage() {
     if (!state.article) return;
     setDeleting(true);
     try {
-      const res = await fetch(
-        `/api/admin/articles/${encodeURIComponent(state.article.slug)}`,
-        { method: 'DELETE' },
-      );
+      const res = await fetch(`/api/admin/articles/${encodeURIComponent(state.article.slug)}`, {
+        method: 'DELETE',
+      });
       const json = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
       toast.success(t('Article deleted.', 'Usunięto artykuł.'));
       router.push(listUrl);
       router.refresh();
     } catch (e) {
-      toast.error(
-        e instanceof Error ? e.message : t('Delete failed', 'Błąd usuwania'),
-      );
+      toast.error(e instanceof Error ? e.message : t('Delete failed', 'Błąd usuwania'));
     } finally {
       setDeleting(false);
     }
   }
 
-  // أزرار (تصميم مُحسّن ومقروء)
   const btn = {
     ghost:
       'inline-flex items-center gap-2 rounded-lg px-3 py-2 border border-zinc-300/80 dark:border-zinc-700/70 bg-white/80 dark:bg-zinc-900/60 text-zinc-800 dark:text-zinc-100 hover:bg-white dark:hover:bg-zinc-800 transition',
@@ -204,14 +195,10 @@ export default function EditArticlePage() {
       'inline-flex items-center gap-2 rounded-lg px-4 py-2 bg-gradient-to-r from-rose-600 to-red-600 text-white shadow-md hover:shadow-lg active:scale-[.99] transition',
     icon:
       'inline-flex items-center gap-2 rounded-lg p-2 border border-zinc-300/80 dark:border-zinc-700/70 text-zinc-800 dark:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition',
-  };
+  } as const;
 
   if (!slug) {
-    return (
-      <p className="p-6 text-red-500">
-        {t('Invalid slug', 'Niepoprawny slug')}
-      </p>
-    );
+    return <p className="p-6 text-red-500">{t('Invalid slug', 'Niepoprawny slug')}</p>;
   }
 
   if (state.loading) {
@@ -219,9 +206,7 @@ export default function EditArticlePage() {
       <main className="max-w-5xl mx-auto px-4 py-12">
         <div className="flex items-center gap-3 mb-6">
           <Loader2 className="w-5 h-5 animate-spin text-zinc-500" />
-          <h1 className="text-2xl font-semibold">
-            {t('Loading article…', 'Ładowanie artykułu…')}
-          </h1>
+          <h1 className="text-2xl font-semibold">{t('Loading article…', 'Ładowanie artykułu…')}</h1>
         </div>
         <div className="space-y-4 animate-pulse">
           <div className="h-10 bg-zinc-200 dark:bg-zinc-800 rounded" />
@@ -235,9 +220,7 @@ export default function EditArticlePage() {
   if (state.error) {
     return (
       <main className="max-w-xl mx-auto px-4 py-16 space-y-6">
-        <h1 className="text-2xl font-bold">
-          {t('Edit Article', 'Edytuj artykuł')}
-        </h1>
+        <h1 className="text-2xl font-bold">{t('Edit Article', 'Edytuj artykuł')}</h1>
         <p className="text-red-500 text-sm">{state.error}</p>
         <button onClick={load} className={btn.ghost}>
           {t('Retry', 'Spróbuj ponownie')}
@@ -249,12 +232,8 @@ export default function EditArticlePage() {
   if (!state.article) {
     return (
       <main className="max-w-xl mx-auto px-4 py-16">
-        <h1 className="text-2xl font-bold mb-4">
-          {t('Edit Article', 'Edytuj artykuł')}
-        </h1>
-        <p className="text-red-500">
-          {t('Article not found.', 'Artykuł nie znaleziony.')}
-        </p>
+        <h1 className="text-2xl font-bold mb-4">{t('Edit Article', 'Edytuj artykuł')}</h1>
+        <p className="text-red-500">{t('Article not found.', 'Artykuł nie znaleziony.')}</p>
       </main>
     );
   }
@@ -263,7 +242,7 @@ export default function EditArticlePage() {
 
   return (
     <main className="max-w-5xl mx-auto px-4 py-8 space-y-6">
-      {/* شريط علوي بسيط */}
+      {/* top bar */}
       <header className="sticky top-16 z-10 -mx-4 px-4 py-3 bg-white/85 dark:bg-zinc-900/85 backdrop-blur border-b border-zinc-200/70 dark:border-zinc-800/60">
         <div className="max-w-5xl mx-auto flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
@@ -289,10 +268,7 @@ export default function EditArticlePage() {
               </a>
             )}
 
-            <button
-              onClick={() => setDlgOpen(true)}
-              className={btn.danger}
-            >
+            <button onClick={() => setDlgOpen(true)} className={btn.danger}>
               <Trash2 className="w-4 h-4" />
               {t('Delete', 'Usuń')}
             </button>
@@ -300,7 +276,7 @@ export default function EditArticlePage() {
         </div>
       </header>
 
-      {/* المحرّر */}
+      {/* editor */}
       <ArticleEditor
         mode="edit"
         locale={locale}
@@ -314,7 +290,12 @@ export default function EditArticlePage() {
             en: article.description?.toString() ?? '',
             pl: article.description?.toString() ?? '',
           },
-          content: article.contentRaw,
+          // Always provide both languages. If API didn’t have content,
+          // we already duplicated contentHtml above.
+          content: {
+  en: article.contentRaw?.en ?? article.contentHtml ?? '',
+  pl: article.contentRaw?.pl ?? article.contentHtml ?? '',
+},
           categoryId: article.categories?.[0] || '',
           coverUrl: article.heroImageUrl,
           videoUrl: undefined,
@@ -323,7 +304,6 @@ export default function EditArticlePage() {
         onSaved={() => router.push(listUrl)}
       />
 
-      {/* ConfirmDelete (HeadlessUI) */}
       <ConfirmDelete
         open={dlgOpen}
         setOpen={setDlgOpen}

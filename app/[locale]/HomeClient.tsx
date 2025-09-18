@@ -23,7 +23,6 @@ interface ApiArticle {
   excerpt?: string;
   coverUrl?: string;
   createdAt?: string;
-  // 👇 لو الـ API يرجّع موضع القصّ
   meta?: { coverPosition?: LegacyCoverPos | CoverPosition };
 }
 
@@ -76,12 +75,11 @@ function extractErrorMessage(err: unknown): string {
   return 'Unknown error';
 }
 
-/* موحّد لاستخدام صورة بديلة عند الحاجة */
+/* صورة بديلة عند الحاجة */
 const PLACEHOLDER_IMG = '/images/placeholder.png';
-const safeImage = (src?: string) =>
-  src && src.length > 4 ? src : PLACEHOLDER_IMG;
+const safeImage = (src?: string) => (src && src.length > 4 ? src : PLACEHOLDER_IMG);
 
-/* تحويل coverPosition إلى CSS object-position */
+/* تحويل coverPosition إلى object-position */
 function toObjectPosition(pos?: LegacyCoverPos | CoverPosition): string {
   if (!pos) return '50% 50%';
   if (typeof pos === 'string') {
@@ -95,8 +93,8 @@ function toObjectPosition(pos?: LegacyCoverPos | CoverPosition): string {
 }
 
 const FETCH_LIMIT = 8;
+const CARD_HEIGHT = 340; // ارتفاع الكارت للسلايدر
 
-/* ------------------------------------ */
 export default function HomeClient() {
   const params = useParams();
   const rawLocale = params?.locale as string | undefined;
@@ -114,54 +112,44 @@ export default function HomeClient() {
     [locale],
   );
 
-  const fetchArticles = useCallback(async () => {
+  // جلب المقالات مع إلغاء فعلي لطلب الشبكة عند تغيّر اللغة/إلغاء المكون
+  const fetchArticles = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
     setError(null);
-    let cancelled = false;
     try {
       const qs = new URLSearchParams({
         pageNo: '1',
         limit: String(FETCH_LIMIT),
         locale,
       });
+
       const res = await fetch(`/api/articles?${qs.toString()}`, {
         cache: 'no-store',
+        signal,
       });
 
-      let data: ArticlesApiResponse;
-      try {
-        data = (await res.json()) as ArticlesApiResponse;
-      } catch {
-        throw new Error('Invalid JSON response');
-      }
-
+      const data = (await res.json()) as ArticlesApiResponse;
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-      if (!Array.isArray(data.articles))
-        throw new Error('Malformed API payload');
+      if (!Array.isArray(data.articles)) throw new Error('Malformed API payload');
 
-      if (!cancelled) setArticles(data.articles);
+      setArticles(data.articles);
     } catch (err: unknown) {
-      if (!cancelled) {
-        setError(extractErrorMessage(err));
-        setArticles([]);
-      }
+      // لو اتلغى الطلب، منغيرش الستيت
+      if (err instanceof DOMException && err.name === 'AbortError') return;
+      setError(extractErrorMessage(err));
+      setArticles([]);
     } finally {
-      if (!cancelled) setLoading(false);
+      setLoading(false);
     }
-    return () => {
-      cancelled = true;
-    };
   }, [locale]);
 
   useEffect(() => {
-    (async () => {
-      await fetchArticles();
-    })();
+    const controller = new AbortController();
+    fetchArticles(controller.signal);
+    return () => controller.abort();
   }, [fetchArticles]);
 
-  /* شرائح السلايدر — ارتفاع موحّد للبطاقة + قص صورة 16:9 مع object-position */
-  const CARD_HEIGHT = 340; // يمكنك تغييره لـ 320/360 حسب ذوقك
-
+  /* شرائح السلايدر — نستخدم style بدل h-[…px] عشان Tailwind */
   const sliderSlides = useMemo(
     () =>
       articles.map((a) => {
@@ -169,9 +157,12 @@ export default function HomeClient() {
         const imgSrc = safeImage(a.coverUrl);
 
         return (
-          <SwiperSlide key={a._id} className={`h-[${CARD_HEIGHT}px]`}>
-            <Link href={buildArticleHref(a.slug)} className="block h-full">
-              <article className="h-full flex flex-col rounded-xl overflow-hidden bg-gray-800 shadow hover:shadow-lg transition group focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <SwiperSlide key={a._id}>
+            <Link href={buildArticleHref(a.slug)} className="block">
+              <article
+                className="flex flex-col rounded-xl overflow-hidden bg-gray-800 shadow hover:shadow-lg transition group focus:outline-none focus:ring-2 focus:ring-blue-500"
+                style={{ height: CARD_HEIGHT }}
+              >
                 {/* صورة الغلاف بنسبة ثابتة */}
                 <div className="relative w-full overflow-hidden aspect-video">
                   <Image
@@ -186,7 +177,7 @@ export default function HomeClient() {
                   <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
                 </div>
 
-                {/* نص البطاقة — سطرين عنوان + سطرين ملخّص لتوحيد الارتفاع */}
+                {/* نص البطاقة — سطرين عنوان + سطرين ملخّص */}
                 <div className="flex-1 p-4 space-y-2">
                   <h3 className="text-lg font-semibold text-white line-clamp-2">
                     {a.title}
@@ -207,7 +198,7 @@ export default function HomeClient() {
 
   return (
     <main className="min-h-screen flex flex-col bg-gray-900 text-white">
-      {/* Hero (بدون تغيير ألوان) */}
+      {/* Hero */}
       <section className="relative text-center bg-gradient-to-br from-gray-900 via-zinc-800 to-gray-900 overflow-hidden">
         <div
           className="absolute inset-0 bg-[url('/images/hero-bg.jpg')] bg-cover bg-center opacity-10"
@@ -258,16 +249,14 @@ export default function HomeClient() {
           )}
         </div>
 
-        {/* Loading Skeleton (بنفس ارتفاع الكارت) */}
+        {/* Loading Skeleton */}
         {loading && (
-          <div
-            className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3"
-            aria-live="polite"
-          >
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3" aria-live="polite">
             {Array.from({ length: 6 }).map((_, i) => (
               <div
                 key={i}
-                className={`rounded-xl overflow-hidden bg-gray-800 animate-pulse h-[${CARD_HEIGHT}px]`}
+                className="rounded-xl overflow-hidden bg-gray-800 animate-pulse"
+                style={{ height: CARD_HEIGHT }}
               />
             ))}
           </div>
@@ -279,7 +268,10 @@ export default function HomeClient() {
             <p className="text-red-400 text-sm">{t.error}</p>
             <button
               type="button"
-              onClick={fetchArticles}
+              onClick={() => {
+                const controller = new AbortController();
+                fetchArticles(controller.signal).catch(() => {});
+              }}
               className="px-4 py-2 rounded bg-zinc-800 hover:bg-zinc-700 text-sm font-medium"
             >
               {t.retry}

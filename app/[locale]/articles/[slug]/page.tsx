@@ -2,7 +2,6 @@
 import { notFound } from 'next/navigation';
 import clientPromise from '@/types/mongodb';
 import type { Metadata } from 'next';
-import type { PageKey } from '@/types/constants/pages';
 import Image from 'next/image';
 import { Facebook, Twitter, Linkedin } from 'lucide-react';
 import DOMPurify from 'isomorphic-dompurify';
@@ -14,16 +13,18 @@ type Status = 'draft' | 'published';
 type LegacyCover = 'top' | 'center' | 'bottom';
 type CoverPosition = { x: number; y: number };
 
+// 👇 ندعم الشكلين: string (الجديد) أو record (القديم)
+type MaybeI18n = string | Record<string, string> | undefined;
+
 interface ArticleDoc {
   slug: string;
-  page: PageKey;
   categoryId: string;
-  title: Record<string, string>;
-  excerpt?: Record<string, string>;
-  content?: Record<string, string>;
+  title: MaybeI18n;
+  excerpt?: MaybeI18n;
+  content?: MaybeI18n;
   coverUrl?: string;
   videoUrl?: string;
-  status: Status;
+  status?: Status;                // قد تكون غير موجودة في بعض الوثائق القديمة
   createdAt: Date;
   updatedAt: Date;
   readingTime?: string;
@@ -34,8 +35,11 @@ interface ArticleDoc {
 }
 
 /* ----------------------- helpers ----------------------- */
-function pick(field: Record<string, string> | undefined, locale: Locale): string {
-  return field?.[locale] ?? field?.en ?? Object.values(field ?? {})[0] ?? '';
+// تلتقط من string مباشرة، وإن كان Record تختار حسب اللغة ثم أي قيمة متاحة
+function pick(field: MaybeI18n, locale: Locale): string {
+  if (!field) return '';
+  if (typeof field === 'string') return field;
+  return field[locale] ?? field.en ?? Object.values(field)[0] ?? '';
 }
 
 function resolveSrc(src?: string): string {
@@ -54,15 +58,17 @@ function absoluteUrl(pathOrUrl: string): string {
 
 async function fetchArticle(slug: string) {
   const db = (await clientPromise).db();
+  // ندعم القديم الذي لا يملك status (نعتبره منشورًا)
   return db
     .collection<ArticleDoc>('articles')
-    .findOne({ slug, status: 'published' });
+    .findOne({ slug, $or: [{ status: 'published' }, { status: { $exists: false } }] });
 }
 
 function stripHtml(html: string): string {
   return html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
+// احتفظنا بها لو أردت لاحقًا تعديل عرض الصور داخل المحتوى
 function normalizeImageWidths(html: string): string {
   return html;
 }
@@ -133,6 +139,7 @@ export default async function ArticlePage(
   const title = pick(art.title, locale);
   const excerpt = pick(art.excerpt, locale);
   const rawBody = pick(art.content, locale);
+
   const preSanitized = rawBody ? normalizeImageWidths(rawBody) : '';
   const bodySafe = preSanitized
     ? DOMPurify.sanitize(preSanitized, {
@@ -141,6 +148,7 @@ export default async function ArticlePage(
         ADD_TAGS: ['figure'],
       })
     : '';
+
   const dateStr = new Date(art.createdAt).toLocaleDateString(
     locale === 'pl' ? 'pl-PL' : 'en-GB',
     { year: 'numeric', month: 'long', day: 'numeric' }
@@ -222,9 +230,6 @@ export default async function ArticlePage(
             <h1 className="text-4xl font-extrabold leading-tight tracking-tight">{title}</h1>
             <div className="mt-2 flex flex-wrap gap-4 text-sm text-gray-600 dark:text-gray-400">
               <time>{dateStr}</time>
-              <span className="uppercase font-semibold bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300 px-2 py-0.5 rounded">
-                {art.page}
-              </span>
               {art.readingTime && <span className="italic">{art.readingTime}</span>}
             </div>
           </header>
@@ -254,10 +259,10 @@ export default async function ArticlePage(
 
           {bodySafe ? (
             <section
-      className="prose-headings:scroll-mt-24 break-words hyphens-auto"
-      style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
-      dangerouslySetInnerHTML={{ __html: bodySafe }}
-    />
+              className="prose-headings:scroll-mt-24 break-words hyphens-auto"
+              style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
+              dangerouslySetInnerHTML={{ __html: bodySafe }}
+            />
           ) : (
             <p className="mt-8 italic text-center text-gray-500 dark:text-gray-400">No content.</p>
           )}

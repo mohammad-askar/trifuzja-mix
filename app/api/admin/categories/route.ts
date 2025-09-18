@@ -1,4 +1,4 @@
-// المسار: /app/api/admin/categories/route.ts
+// 📁 app/api/admin/categories/route.ts
 export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -7,14 +7,14 @@ import clientPromise from '@/types/mongodb';
 import slugify from 'slugify';
 import { z, ZodError } from 'zod';
 
-/* ---------------------- Zod Schemas (بدون page) ---------------------- */
+/* --------------------------- Zod Schemas --------------------------- */
+// ✅ أحادي اللغة: اسم واحد فقط
 const CategoryCreateInput = z.object({
-  nameEn: z.string().min(2),
-  namePl: z.string().min(2),
+  name: z.string().trim().min(2, 'name must be at least 2 characters'),
 });
 
-/* ------------------------------ GET ------------------------------ */
-/** يرجع كل التصنيفات بدون أي حقل page. */
+/* -------------------------------- GET ------------------------------ */
+/** يرجع كل التصنيفات (name: string, slug: string) مع فرز أبجدي بالاسم. */
 export async function GET() {
   try {
     await requireAdmin();
@@ -25,15 +25,15 @@ export async function GET() {
       .find(
         {},
         {
-          // لا نعرض page إطلاقًا
           projection: { name: 1, slug: 1, createdAt: 1, updatedAt: 1 },
         },
       )
-      .sort({ 'name.en': 1 })
+      .sort({ name: 1 }) // ← فرز بالاسم الأحادي
       .toArray();
 
     return NextResponse.json(
       cats.map((c) => ({ ...c, _id: c._id.toString() })),
+      { status: 200 },
     );
   } catch (e) {
     const status =
@@ -42,28 +42,34 @@ export async function GET() {
   }
 }
 
-/* ------------------------------ POST ----------------------------- */
-/** إنشاء تصنيف جديد — بدون page، مع فحص تكرار الـslug على مستوى المجموعة كلها. */
+/* -------------------------------- POST ----------------------------- */
+/** إنشاء تصنيف جديد أحادي اللغة، مع فحص تكرار الـ slug على مستوى المجموعة. */
 export async function POST(req: NextRequest) {
   try {
     await requireAdmin();
 
     const parsed = CategoryCreateInput.parse(await req.json());
 
-    const slug = slugify(parsed.nameEn, { lower: true, strict: true });
+    const name = parsed.name.trim();
+    const slug = slugify(name, { lower: true, strict: true });
     const now = new Date();
 
     const db = (await clientPromise).db();
 
-    // فحص تكرار slug عالميًا (بدون page)
+    // فحص تكرار slug عالميًا
     const dup = await db.collection('categories').findOne({ slug });
     if (dup) {
       return NextResponse.json({ error: 'Slug exists' }, { status: 409 });
     }
 
-    const doc = {
+    const doc: {
+      name: string;
+      slug: string;
+      createdAt: Date;
+      updatedAt: Date;
+    } = {
+      name,
       slug,
-      name: { en: parsed.nameEn, pl: parsed.namePl },
       createdAt: now,
       updatedAt: now,
     };

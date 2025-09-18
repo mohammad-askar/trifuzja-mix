@@ -16,7 +16,6 @@ interface ArticleSummary {
   excerpt: string | Record<Locale, string>;
   coverUrl?: string;
   readingTime?: string;
-  // ✅ لدعم موضع الغلاف المحفوظ
   meta?: { coverPosition?: CoverPos };
 }
 
@@ -36,15 +35,16 @@ async function fetchPage(opts: {
   limit: number;
   signal?: AbortSignal;
 }): Promise<{ list: ArticleSummary[]; total: number }> {
-  const { cats, pageNo, limit, signal } = opts;
+  const { locale, cats, pageNo, limit, signal } = opts;
 
   const qs = new URLSearchParams({
     pageNo: String(pageNo),
     limit: String(limit),
+    locale, // ✅ مهم لانتقاء النص باللّغة الصحيحة في الـ API
   });
   cats.forEach((id) => qs.append('cat', id));
 
-  const res = await fetch(`/api/articles?${qs}`, { signal });
+  const res = await fetch(`/api/articles?${qs.toString()}`, { signal });
   if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
 
   const data: ApiListResponse = await res.json();
@@ -56,11 +56,7 @@ async function fetchPage(opts: {
 export default function ArticlesList({ locale = 'en', catsParam }: Props) {
   const cats = useMemo<string[]>(
     () =>
-      catsParam == null
-        ? []
-        : Array.isArray(catsParam)
-        ? catsParam
-        : [catsParam],
+      catsParam == null ? [] : Array.isArray(catsParam) ? catsParam : [catsParam],
     [catsParam],
   );
 
@@ -69,13 +65,15 @@ export default function ArticlesList({ locale = 'en', catsParam }: Props) {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [loading, setLoad] = useState(true);
-  const abortRef = useRef<AbortController | null>(null);
 
-  // تحميل الصفحة الأولى + إعادة الضبط عند تغيّر الفلاتر
+  // هنستخدم نفس الـ controller لأول صفحة
+  const firstPageAbort = useRef<AbortController | null>(null);
+
+  // تحميل الصفحة الأولى + إعادة الضبط عند تغيّر الفلاتر/اللغة
   useEffect(() => {
-    abortRef.current?.abort();
+    firstPageAbort.current?.abort();
     const controller = new AbortController();
-    abortRef.current = controller;
+    firstPageAbort.current = controller;
 
     (async () => {
       setLoad(true);
@@ -96,7 +94,7 @@ export default function ArticlesList({ locale = 'en', catsParam }: Props) {
           toast.error((e as Error).message);
         }
       } finally {
-        setLoad(false);
+        if (!controller.signal.aborted) setLoad(false);
       }
     })();
 
@@ -105,12 +103,21 @@ export default function ArticlesList({ locale = 'en', catsParam }: Props) {
 
   // لانهائي: مراقبة العنصر الحارس
   const sentinel = useRef<HTMLDivElement>(null);
+  const moreAbort = useRef<AbortController | null>(null);
+
   useEffect(() => {
     if (!sentinel.current) return;
+
     const io = new IntersectionObserver(
       (entries) => {
-        if (!entries[0].isIntersecting || loading) return;
+        const hit = entries[0]?.isIntersecting;
+        if (!hit || loading) return;
         if (items.length >= total) return;
+
+        // إلغاء أي طلب قديم قبل التالي
+        moreAbort.current?.abort();
+        const controller = new AbortController();
+        moreAbort.current = controller;
 
         (async () => {
           setLoad(true);
@@ -121,14 +128,17 @@ export default function ArticlesList({ locale = 'en', catsParam }: Props) {
               cats,
               pageNo: next,
               limit: LIMIT,
+              signal: controller.signal,
             });
             setItems((prev) => [...prev, ...list]);
             setPage(next);
           } catch (e) {
-            console.error(e);
-            toast.error((e as Error).message);
+            if (!controller.signal.aborted) {
+              console.error(e);
+              toast.error((e as Error).message);
+            }
           } finally {
-            setLoad(false);
+            if (!controller.signal.aborted) setLoad(false);
           }
         })();
       },
@@ -136,7 +146,10 @@ export default function ArticlesList({ locale = 'en', catsParam }: Props) {
     );
 
     io.observe(sentinel.current);
-    return () => io.disconnect();
+    return () => {
+      io.disconnect();
+      moreAbort.current?.abort();
+    };
   }, [items, total, loading, locale, cats, page]);
 
   const Skel = () => (

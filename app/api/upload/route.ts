@@ -1,53 +1,87 @@
-// E:\trifuzja-mix\app\api\upload\route.ts
+// 📁 E:\trifuzja-mix\app\api\upload\route.ts
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
 import { NextRequest, NextResponse } from 'next/server';
-import { v2 as cloudinary } from 'cloudinary';
+import { v2 as cloudinary, UploadApiResponse } from 'cloudinary';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/authOptions';
+import { z, ZodError } from 'zod';
 
-// إعداد Cloudinary من env (خلي القيم في .env.local + Vercel env)
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
+/* ---------------------- Zod للتحقق من البيئة ---------------------- */
+const EnvSchema = z.object({
+  CLOUDINARY_CLOUD_NAME: z.string().min(1, 'CLOUDINARY_CLOUD_NAME missing'),
+  CLOUDINARY_API_KEY: z.string().min(1, 'CLOUDINARY_API_KEY missing'),
+  CLOUDINARY_API_SECRET: z.string().min(1, 'CLOUDINARY_API_SECRET missing'),
 });
 
-const MAX_SIZE = 5 * 1024 * 1024; // 5MB
-const ALLOWED = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+const env = EnvSchema.parse({
+  CLOUDINARY_CLOUD_NAME: process.env.CLOUDINARY_CLOUD_NAME,
+  CLOUDINARY_API_KEY: process.env.CLOUDINARY_API_KEY,
+  CLOUDINARY_API_SECRET: process.env.CLOUDINARY_API_SECRET,
+});
 
+/* ---------------------- إعداد Cloudinary ---------------------- */
+cloudinary.config({
+  cloud_name: env.CLOUDINARY_CLOUD_NAME,
+  api_key: env.CLOUDINARY_API_KEY,
+  api_secret: env.CLOUDINARY_API_SECRET,
+});
+
+/* ---------------------- ثوابت الرفع ---------------------- */
+const MAX_SIZE = 5 * 1024 * 1024; // 5MB
+const ALLOWED: ReadonlyArray<string> = [
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/gif',
+] as const;
+
+/* ---------------------- أدوات مساعدة ---------------------- */
+function errorJson(message: string, status = 400) {
+  return NextResponse.json({ error: message }, { status });
+}
+
+function toDataUri(file: File, buf: Buffer): string {
+  return `data:${file.type};base64,${buf.toString('base64')}`;
+}
+
+/* ---------------------- POST: رفع صورة ---------------------- */
 export async function POST(req: NextRequest) {
   try {
-    // 🛡️ السماح بس للإداريين
+    // 🛡️ السماح فقط للمستخدمين الموثّقين (ويمكنك قصرها على admin لو أردت)
     const session = await getServerSession(authOptions);
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const role = (session?.user as { role?: string } | undefined)?.role ?? '';
+    if (!session || role !== 'admin') {
+      return errorJson('Unauthorized', 401);
     }
 
+    // استلام ملف من FormData
     const form = await req.formData();
-    const file = form.get('file') as File | null;
-    if (!file) {
-      return NextResponse.json({ error: 'No file sent' }, { status: 400 });
-    }
+    const file = form.get('file');
 
+    if (!(file instanceof File)) {
+      return errorJson('No file sent', 400);
+    }
     if (!ALLOWED.includes(file.type)) {
-      return NextResponse.json({ error: 'Unsupported type' }, { status: 415 });
+      return errorJson('Unsupported type', 415);
     }
     if (file.size > MAX_SIZE) {
-      return NextResponse.json({ error: 'File too large (max 5MB)' }, { status: 413 });
+      return errorJson('File too large (max 5MB)', 413);
     }
 
-    // 🌀 قراءة الباينري وتحويله Base64
-    const arrayBuffer = await file.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-    const base64 = buffer.toString('base64');
-    const dataUri = `data:${file.type};base64,${base64}`;
+    // تحويل الملف إلى Base64 Data URI (لاستخدام رفع واحد)
+    const buffer = Buffer.from(await file.arrayBuffer());
+    const dataUri = toDataUri(file, buffer);
 
     // رفع إلى Cloudinary
-    const uploadRes = await cloudinary.uploader.upload(dataUri, {
-      folder: 'articles', // مجلد في Cloudinary (ممكن تغيره)
-      resource_type: 'image',
+    const uploadRes: UploadApiResponse = await cloudinary.uploader.upload(dataUri, {
+      folder: 'articles',     // يمكنك تعديله
+      resource_type: 'image', // صرّح أنها صورة
+      // transformation: [{ quality: 'auto', fetch_format: 'auto' }], // اختياري
     });
 
+    // استجابة ناجحة
     return NextResponse.json(
       {
         url: uploadRes.secure_url,
@@ -55,14 +89,18 @@ export async function POST(req: NextRequest) {
         width: uploadRes.width,
         height: uploadRes.height,
         format: uploadRes.format,
+        bytes: uploadRes.bytes,
       },
       { status: 201 },
     );
-  } catch (err: unknown) {
-  console.error('UPLOAD ERROR', err);
-  return NextResponse.json(
-    { error: 'Upload failed', details: (err as Error).message },
-    { status: 500 }
-  );
-}
+  } catch (e: unknown) {
+    // أخطاء Zod (البيئة)
+    if (e instanceof ZodError) {
+      return errorJson(e.issues.map((i) => i.message).join(' | '), 500);
+    }
+    // أخطاء Cloudinary أو أخرى
+    const message = e instanceof Error ? e.message : 'Upload failed';
+    console.error('UPLOAD ERROR:', e);
+    return NextResponse.json({ error: 'Upload failed', details: message }, { status: 500 });
+  }
 }

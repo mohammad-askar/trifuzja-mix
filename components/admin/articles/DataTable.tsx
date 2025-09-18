@@ -76,7 +76,7 @@ export default function DataTable({ locale, rows, total, pagination }: Props) {
   };
 
   const pageHref = (p:number) => {
-    const qp = new URLSearchParams(params);
+    const qp = new URLSearchParams(params.toString());
     qp.set('page', String(p));
     return `?${qp.toString()}`;
   };
@@ -91,8 +91,10 @@ export default function DataTable({ locale, rows, total, pagination }: Props) {
         </div>
       )}
 
+      {/* match container + ring with categories table */}
       <div className="overflow-x-auto rounded-xl shadow ring-1 ring-white/10 dark:ring-zinc-800/60">
         <table className="min-w-[700px] w-full border-collapse text-sm">
+          {/* same header colors */}
           <thead className="bg-gray-900/90 text-zinc-200 text-sm">
             <tr>
               <Th>{t.title}</Th>
@@ -101,19 +103,21 @@ export default function DataTable({ locale, rows, total, pagination }: Props) {
             </tr>
           </thead>
 
-          <tbody className="text-black-200">
+          {/* remove forced text color so it matches categories table */}
+          <tbody className="text-zinc-900 dark:text-zinc-100">
             {rows.map((r,i)=>(
-              <tr key={r.id} className={clsx(i%2 === 1 && 'bg-zinc-500/60','group')}>
+              // use the exact alternating row bg from categories: bg-zinc-900/60
+              <tr key={r.id} className={clsx(i % 2 ? 'bg-zinc-900/60' : '', 'group')}>
                 <Td>
                   <Link
-                    href={`/${locale}/admin/articles/${r.slug}/edit`}
-                    className="font-medium text-black-100 hover:underline"
-                  >
+ href={`/${locale}/admin/articles/${r.slug}/edit`}
+   className="font-medium hover:underline"
+ >
                     {r.title}
                   </Link>
                 </Td>
 
-                <Td className="text-xs text-b-300">
+                <Td className="text-xs text-zinc-600 dark:text-zinc-300">
                   {new Date(r.createdAt).toLocaleDateString(locale, {
                     year:'numeric', month:'short', day:'numeric'
                   })}
@@ -123,14 +127,14 @@ export default function DataTable({ locale, rows, total, pagination }: Props) {
                   <div className="flex items-center justify-center gap-3">
                     <Link
                       href={`/${locale}/articles/${r.slug}`} target="_blank"
-                      title="Preview" className="text-sky-700 hover:text-sky-400"
+                      title="Preview" className="text-sky-500 hover:text-sky-400"
                     >
                       <Eye className="w-4 h-4"/>
                     </Link>
 
                     <Link
                       href={`/${locale}/admin/articles/${r.slug}/edit`}
-                      title="Edit" className="text-green-700 hover:text-green-400"
+                      title="Edit" className="text-green-500 hover:text-green-400"
                     >
                       <Pencil className="w-4 h-4"/>
                     </Link>
@@ -139,7 +143,7 @@ export default function DataTable({ locale, rows, total, pagination }: Props) {
                       title="Delete"
                       disabled={pending}
                       onClick={()=>askDelete(r.slug, r.title)}
-                      className="text-red-700 hover:text-red-400 disabled:opacity-40"
+                      className="text-red-500 hover:text-red-400 disabled:opacity-40"
                     >
                       <Trash className="w-4 h-4"/>
                     </button>
@@ -150,6 +154,7 @@ export default function DataTable({ locale, rows, total, pagination }: Props) {
           </tbody>
         </table>
 
+        {/* footer already matches header bg */}
         <nav className="flex items-center justify-between px-4 py-3 bg-gray-900/90 text-xs text-zinc-200">
           <span>
             {t.pageLbl}&nbsp;<b>{pagination.page}</b>&nbsp;{t.of}&nbsp;<b>{pagination.totalPages}</b>

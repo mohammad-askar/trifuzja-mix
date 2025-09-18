@@ -38,13 +38,16 @@ const TEXTS: Record<Locale, HomeTexts> = {
 type LegacyCoverPos = 'top' | 'center' | 'bottom';
 type CoverPosition = { x: number; y: number };
 
+// 👇 نعتمد الشكلين: string (الجديد) أو record (القديم)
+type MaybeI18n = string | Record<string, string> | undefined;
+
 interface RawArticle {
   _id: ObjectId;
   slug: string;
-  title: Record<string, string>;
-  excerpt?: Record<string, string>;
+  title: MaybeI18n;
+  excerpt?: MaybeI18n;
   coverUrl?: string;
-  status: 'draft' | 'published';
+  status?: 'draft' | 'published';
   createdAt?: Date;
   meta?: { coverPosition?: LegacyCoverPos | CoverPosition };
 }
@@ -56,12 +59,14 @@ interface ArticleCard {
   excerpt: string;
   coverUrl?: string;
   createdAt?: string;
-  // نمرّر الميتا للسلايدر (لا يؤثر على الألوان)
   meta?: { coverPosition?: LegacyCoverPos | CoverPosition };
 }
 
-function pick(obj: Record<string, string> | undefined, locale: Locale): string {
-  return obj?.[locale] ?? obj?.en ?? (obj ? Object.values(obj)[0] : '') ?? '';
+// تلتقط من string مباشرة، أو من record حسب اللغة ثم أي قيمة متاحة
+function pick(field: MaybeI18n, locale: Locale): string {
+  if (!field) return '';
+  if (typeof field === 'string') return field;
+  return field[locale] ?? field.en ?? Object.values(field)[0] ?? '';
 }
 
 /* ✅ generateMetadata بتوقيع Promise للـ params */
@@ -102,11 +107,10 @@ export default async function LocaleHome({
 
   const db = (await clientPromise).db();
 
-  // مهم: استخدم "inclusion projection" مع الحقول المطلوبة فقط
-  // علشان نقدر نرجّع meta.coverPosition بدون تعارض Mongo (31253).
+  // نقبل الوثائق القديمة التي لا تحتوي status (تُعتبر منشورة)
   const docs = await db
     .collection<RawArticle>('articles')
-    .find({ status: 'published' })
+    .find({ $or: [{ status: 'published' }, { status: { $exists: false } }] })
     .sort({ createdAt: -1 })
     .limit(8)
     .project({
@@ -115,7 +119,7 @@ export default async function LocaleHome({
       excerpt: 1,
       coverUrl: 1,
       createdAt: 1,
-      meta: 1, // <-- هنا
+      meta: 1,
     })
     .toArray();
 
@@ -131,7 +135,7 @@ export default async function LocaleHome({
 
   return (
     <main className="min-h-screen bg-gray-900 text-white">
-      {/* الهيرو بدون أي تغيير في الألوان أو الأحجام */}
+      {/* الهيرو */}
       <section className="relative text-center py-28 px-4 bg-gradient-to-br from-gray-900 via-zinc-800 to-gray-900 overflow-hidden">
         <div
           className="absolute inset-0 bg-[url('/images/hero-bg.jpg')] bg-cover bg-center opacity-10"
@@ -168,7 +172,7 @@ export default async function LocaleHome({
         </div>
       </section>
 
-      {/* السلايدر: الكومبوننت مسؤول عن توحيد المقاسات (aspect-video + min heights) */}
+      {/* السلايدر */}
       <LatestArticlesSlider
         locale={loc}
         articles={articles}

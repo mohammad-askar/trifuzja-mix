@@ -1,9 +1,9 @@
+//E:\trifuzja-mix\components\admin\ArticlesTableClient.tsx
 'use client';
 
 import Link from 'next/link';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { useState } from 'react';
-// أو احذف الاستيراد واستبدل التأكيد بـ window.confirm
 
 interface Row {
   id: string;
@@ -37,23 +37,36 @@ export default function ArticlesTableClient({
   const pathname = usePathname();
   const [deleting, setDeleting] = useState<string | null>(null);
 
-  function setPage(p: number) {
+  function setPage(p: number): void {
+    const next = Math.min(Math.max(1, p), Math.max(1, totalPages));
     const params = new URLSearchParams(searchParams?.toString() || '');
-    params.set('page', String(p));
-    router.replace(`${pathname}?${params.toString()}`);
+    params.set('page', String(next));
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
   }
 
-  async function deleteRow(slug: string) {
-    if (!confirm(locale === 'pl' ? 'Usunąć artykuł?' : 'Delete article?')) return;
+  async function deleteRow(slug: string): Promise<void> {
+    const msg = locale === 'pl' ? 'Usunąć artykuł?' : 'Delete article?';
+    if (!confirm(msg)) return;
+
     setDeleting(slug);
     try {
-      const res = await fetch(`/api/admin/articles/${slug}`, { method:'DELETE' });
-      const data = await res.json();
+      const res = await fetch(`/api/admin/articles/${encodeURIComponent(slug)}`, {
+        method: 'DELETE',
+      });
+
+      // حاول نقرأ JSON، ولو فشل خذ النصّ
+      let errorText = '';
       if (!res.ok) {
-        alert(data.error || 'Delete failed');
+        try {
+          const j = (await res.json()) as { error?: string };
+          errorText = j?.error || '';
+        } catch {
+          errorText = await res.text().catch(() => '');
+        }
+        alert(errorText || 'Delete failed');
         return;
       }
-      // إعادة تحميل
+
       router.refresh();
     } finally {
       setDeleting(null);
@@ -65,14 +78,14 @@ export default function ArticlesTableClient({
       <table className="w-full text-sm">
         <thead className="bg-zinc-100 dark:bg-zinc-800">
           <tr>
-            <th className="px-3 py-2 text-left">Title</th>
-            <th className="px-3 py-2">Page</th>
-            <th className="px-3 py-2">Status</th>
-            <th className="px-3 py-2">Actions</th>
+            <th scope="col" className="px-3 py-2 text-left">Title</th>
+            <th scope="col" className="px-3 py-2">Page</th>
+            <th scope="col" className="px-3 py-2">Status</th>
+            <th scope="col" className="px-3 py-2">Actions</th>
           </tr>
         </thead>
         <tbody>
-          {rows.map(r => (
+          {rows.map((r) => (
             <tr
               key={r.id}
               className="border-t border-zinc-200 dark:border-zinc-700"
@@ -99,6 +112,7 @@ export default function ArticlesTableClient({
                 <Link
                   href={`/${locale}/admin/articles/${r.slug}/edit`}
                   className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs"
+                  aria-label={locale === 'pl' ? 'Edytuj artykuł' : 'Edit article'}
                 >
                   {locale === 'pl' ? 'Edytuj' : 'Edit'}
                 </Link>
@@ -106,6 +120,7 @@ export default function ArticlesTableClient({
                   href={`/${locale}/articles/${r.slug}`}
                   className="px-2 py-1 bg-zinc-600 hover:bg-zinc-700 text-white rounded text-xs"
                   target="_blank"
+                  aria-label={locale === 'pl' ? 'Podgląd artykułu' : 'View article'}
                 >
                   {locale === 'pl' ? 'Podgląd' : 'View'}
                 </Link>
@@ -114,6 +129,7 @@ export default function ArticlesTableClient({
                   onClick={() => deleteRow(r.slug)}
                   disabled={deleting === r.slug}
                   className="px-2 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-xs disabled:opacity-50"
+                  aria-busy={deleting === r.slug}
                 >
                   {deleting === r.slug
                     ? (locale === 'pl' ? 'Usuwanie…' : 'Deleting…')
@@ -142,16 +158,18 @@ export default function ArticlesTableClient({
             onClick={() => setPage(pageNo - 1)}
             disabled={pageNo <= 1}
             className="px-3 py-1 text-xs rounded border disabled:opacity-40"
+            aria-label={locale === 'pl' ? 'Poprzednia strona' : 'Previous page'}
           >
             ‹
           </button>
-            <span className="text-xs">
+          <span className="text-xs" aria-live="polite">
             {pageNo}/{totalPages}
           </span>
           <button
             onClick={() => setPage(pageNo + 1)}
             disabled={pageNo >= totalPages}
             className="px-3 py-1 text-xs rounded border disabled:opacity-40"
+            aria-label={locale === 'pl' ? 'Następna strona' : 'Next page'}
           >
             ›
           </button>

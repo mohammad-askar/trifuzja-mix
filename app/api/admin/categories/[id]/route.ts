@@ -1,4 +1,4 @@
-// E:\trifuzja-mix\app\api\admin\categories\[id]\route.ts
+// 📁 app/api/admin/categories/[id]/route.ts
 export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -12,10 +12,9 @@ import { z, ZodError } from 'zod';
 type Ctx = { params: Promise<{ id: string }> };
 
 /* ------------------------------ Schemas ------------------------------- */
-// ✅ بدون page
+// ✅ أحادي اللغة: اسم واحد فقط
 const UpdateSchema = z.object({
-  nameEn: z.string().min(2),
-  namePl: z.string().min(2),
+  name: z.string().trim().min(2, 'name must be at least 2 characters'),
 });
 
 /* -------------------------------- DELETE ------------------------------ */
@@ -29,14 +28,13 @@ export async function DELETE(_req: NextRequest, ctx: Ctx) {
     }
 
     const db = (await clientPromise).db();
-    const res = await db
-      .collection('categories')
-      .deleteOne({ _id: new ObjectId(id) });
+    const res = await db.collection('categories').deleteOne({ _id: new ObjectId(id) });
 
     if (res.deletedCount === 0) {
       return NextResponse.json({ error: 'Category not found' }, { status: 404 });
     }
 
+    // لا حاجة لمحتوى في الجسم عند الحذف
     return new NextResponse(null, { status: 204 });
   } catch (e) {
     const status =
@@ -56,16 +54,17 @@ export async function PUT(req: NextRequest, ctx: Ctx) {
       return NextResponse.json({ error: 'Invalid id format' }, { status: 400 });
     }
 
-    // ✅ تحقق من الجسم بدون page
-    const body = await req.json();
-    const { nameEn, namePl } = UpdateSchema.parse(body);
+    // ✅ تحقق من الجسم: اسم واحد فقط
+    const bodyUnknown = await req.json();
+    const { name } = UpdateSchema.parse(bodyUnknown);
 
-    const slug = slugify(nameEn, { lower: true, strict: true });
+    // ننشئ slug من الاسم الواحد
+    const slug = slugify(name, { lower: true, strict: true });
     const now = new Date();
 
     const db = (await clientPromise).db();
 
-    // ✅ فحص تكرار slug عالميًا (لا يعتمد على page)
+    // ✅ فحص تكرار slug عالميًا
     const dup = await db
       .collection('categories')
       .findOne({ slug, _id: { $ne: new ObjectId(id) } });
@@ -74,14 +73,17 @@ export async function PUT(req: NextRequest, ctx: Ctx) {
       return NextResponse.json({ error: 'Slug exists' }, { status: 409 });
     }
 
+    // ✅ نخزّن الحقول الأحادية فقط: name (string) و slug
     const updateResult = await db.collection('categories').findOneAndUpdate(
       { _id: new ObjectId(id) },
       {
         $set: {
           slug,
-          name: { en: nameEn, pl: namePl },
+          name,           // ← اسم واحد كسلسلة
           updatedAt: now,
         },
+        // تنظيف اختياري لهيكل قديم (إن وُجد) بلا كسر للخلفية:
+        $unset: { 'name.en': '', 'name.pl': '' },
       },
       { returnDocument: 'after' },
     );
@@ -90,10 +92,17 @@ export async function PUT(req: NextRequest, ctx: Ctx) {
       return NextResponse.json({ error: 'Category not found' }, { status: 404 });
     }
 
-    const updated = updateResult.value;
+    const updated = updateResult.value as {
+      _id: ObjectId;
+      name: string;
+      slug: string;
+      updatedAt?: Date;
+      [k: string]: unknown;
+    };
+
     return NextResponse.json({
       ...updated,
-      _id: (updated._id as ObjectId).toString(),
+      _id: updated._id.toString(),
     });
   } catch (e) {
     if (e instanceof ZodError) {

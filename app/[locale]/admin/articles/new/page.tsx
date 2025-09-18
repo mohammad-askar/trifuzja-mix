@@ -16,7 +16,11 @@ const ArticleEditor = dynamic(() => import('@/app/components/ArticleEditor'), {
 const LOCALES = ['en', 'pl'] as const;
 type Locale = (typeof LOCALES)[number];
 
-const t: Record<
+function isLocale(x: unknown): x is Locale {
+  return typeof x === 'string' && (LOCALES as readonly string[]).includes(x);
+}
+
+const TEXTS: Record<
   Locale,
   {
     title: string;
@@ -162,10 +166,21 @@ function Notice({
 
 /* --------------------------------- Page --------------------------------- */
 export default function NewArticlePage() {
-  // Locale
-  const params = useParams() as { locale: Locale };
-  const locale: Locale = LOCALES.includes(params.locale) ? params.locale : 'en';
-  const { title, subtitle, login, loginLink, loading, unauthorized, backToList, goToLogin, editorLoading } = t[locale];
+  // Locale من باراميترات المسار
+  const params = useParams();
+  const raw = typeof params?.locale === 'string' ? params.locale : undefined;
+  const locale: Locale = isLocale(raw) ? raw : 'en';
+  const {
+    title,
+    subtitle,
+    login,
+    loginLink,
+    loading,
+    unauthorized,
+    backToList,
+    goToLogin,
+    editorLoading,
+  } = TEXTS[locale];
 
   const router = useRouter();
 
@@ -173,21 +188,31 @@ export default function NewArticlePage() {
   const { data: session, status } = useSession();
   const role = session?.user?.role as 'admin' | 'editor' | 'viewer' | undefined;
 
-  // Loading session
+  // تحميل الجلسة
   if (status === 'loading') {
     return (
       <main className="max-w-4xl mx-auto px-4 py-10">
-        <PageHeader title={title} subtitle={subtitle} backHref={`/${locale}/admin/articles`} backText={backToList} />
+        <PageHeader
+          title={title}
+          subtitle={subtitle}
+          backHref={`/${locale}/admin/articles`}
+          backText={backToList}
+        />
         <EditorSkeleton hint={loading} />
       </main>
     );
   }
 
-  // Not authenticated
+  // غير مسجّل دخول
   if (!session) {
     return (
       <main className="max-w-2xl mx-auto px-4 py-10">
-        <PageHeader title={title} subtitle={subtitle} backHref={`/${locale}/admin/articles`} backText={backToList} />
+        <PageHeader
+          title={title}
+          subtitle={subtitle}
+          backHref={`/${locale}/admin/articles`}
+          backText={backToList}
+        />
         <Notice tone="error" actionHref={`/${locale}/login`} actionLabel={goToLogin}>
           {login}
           <Link className="underline underline-offset-2" href={`/${locale}/login`}>
@@ -199,34 +224,46 @@ export default function NewArticlePage() {
     );
   }
 
-  // Role guard
+  // صلاحيات
   if (role !== 'admin' && role !== 'editor') {
     return (
       <main className="max-w-2xl mx-auto px-4 py-10">
-        <PageHeader title={title} subtitle={subtitle} backHref={`/${locale}/admin/articles`} backText={backToList} />
+        <PageHeader
+          title={title}
+          subtitle={subtitle}
+          backHref={`/${locale}/admin/articles`}
+          backText={backToList}
+        />
         <Notice tone="error">{unauthorized}</Notice>
       </main>
     );
   }
 
-  // Page
+  // الصفحة
   return (
     <main className="max-w-4xl mx-auto px-4 py-10">
-      <PageHeader title={title} subtitle={subtitle} backHref={`/${locale}/admin/articles`} backText={backToList} />
+      <PageHeader
+        title={title}
+        subtitle={subtitle}
+        backHref={`/${locale}/admin/articles`}
+        backText={backToList}
+      />
 
       <section
         className="rounded-xl border border-gray-200 dark:border-zinc-700 bg-white/70 dark:bg-zinc-900/70 p-3 md:p-4"
         aria-labelledby="editor-section"
       >
-        <h2 id="editor-section" className="sr-only">Editor</h2>
+        <h2 id="editor-section" className="sr-only">
+          Editor
+        </h2>
 
-        {/* 🌟 غلاف بسيط مع padding داخلي للمحرّر */}
+        {/* غلاف بسيط مع padding داخلي للمحرّر */}
         <div className="editor-host rounded-lg p-3 md:p-4">
           <Suspense fallback={<EditorSkeleton hint={editorLoading} />}>
             <ArticleEditor
               mode="create"
               locale={locale}
-              // لا نمرّر page/status إطلاقاً
+              /* لا نمرّر page/status إطلاقًا — الباك إند ينشر مباشرة */
               defaultData={{
                 slug: '',
                 title: { en: '', pl: '' },
@@ -237,27 +274,27 @@ export default function NewArticlePage() {
                 videoUrl: undefined,
                 meta: undefined,
               }}
-              onSaved={(slug: string) => router.push(`/${locale}/admin/articles/${slug}/edit`)}
+              onSaved={(slug: string) =>
+                router.push(`/${locale}/admin/articles/${slug}/edit`)
+              }
             />
           </Suspense>
         </div>
 
-        {/* 🎯 CSS لإخفاء أزرار/حقول Page و Status داخل الـEditor بدون تعديل المكوّن نفسه */}
+        {/* CSS لإخفاء عناصر Page/Status داخل ArticleEditor بدون تعديل داخلي */}
         <style jsx global>{`
-          /* استهدف العناصر الشائعة للأزرار/الحقول */
-          .editor-host [data-field="page"],
-          .editor-host [data-field="status"],
-          .editor-host [name="page"],
-          .editor-host [name="status"],
-          .editor-host [aria-label="Page"],
-          .editor-host [aria-label="Status"],
+          .editor-host [data-field='page'],
+          .editor-host [data-field='status'],
+          .editor-host [name='page'],
+          .editor-host [name='status'],
+          .editor-host [aria-label='Page'],
+          .editor-host [aria-label='Status'],
           .editor-host .page-toggle,
           .editor-host .status-toggle,
           .editor-host .btn-page,
           .editor-host .btn-status {
             display: none !important;
           }
-          /* لو كانت داخل fieldset */
           .editor-host fieldset.page,
           .editor-host fieldset.status {
             display: none !important;

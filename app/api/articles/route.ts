@@ -8,18 +8,25 @@ import clientPromise from '@/types/mongodb';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/authOptions';
 
+/* ------------------------------------------------------------------ */
+/*                               Types                                */
+/* ------------------------------------------------------------------ */
+
 interface CoverPos { x: number; y: number }
+
 interface ArticleMeta {
   coverPosition?: CoverPos | 'top' | 'center' | 'bottom';
+  // حقول إضافية اختيارية
   [key: string]: unknown;
 }
 
+/** مستند المقال بعد التحويل لأحادي اللغة */
 export interface ArticleDoc {
   _id?: string;
   slug: string;
-  title: Record<string, string>;
-  excerpt?: Record<string, string>;
-  content?: Record<string, string>;
+  title: string;           // ← نص واحد فقط (بدون en/pl)
+  excerpt?: string;        // ← نص واحد فقط
+  content?: string;        // ← HTML نصّي واحد
   categoryId: string;
   coverUrl?: string;
   videoUrl?: string;
@@ -30,7 +37,10 @@ export interface ArticleDoc {
   meta?: ArticleMeta;
 }
 
-/* ---------- Helpers ---------- */
+/* ------------------------------------------------------------------ */
+/*                              Helpers                               */
+/* ------------------------------------------------------------------ */
+
 const responseError = (msg: string, status = 400) =>
   NextResponse.json({ error: msg }, { status });
 
@@ -45,37 +55,44 @@ const relativeOrAbsoluteUrl = z
     'Invalid URL',
   );
 
-/* ---------- GET (list) ---------- */
+/* ------------------------------------------------------------------ */
+/*                               GET (list)                           */
+/* ------------------------------------------------------------------ */
+/**
+ * الاستعلامات المدعومة:
+ * - ?pageNo=1&limit=9
+ * - ?cat=catId  أو ?cat=cat1,cat2  أو تكرار cat عدة مرات
+ * يرجع فقط المنشور (والسجلات القديمة بدون status أيضًا).
+ */
 export async function GET(req: NextRequest) {
   try {
     const SearchSchema = z.object({
-      locale: z.enum(['en', 'pl']).default('en'),
       pageNo: z.coerce.number().int().min(1).default(1),
       limit: z.coerce.number().int().min(1).max(50).default(9),
     });
+    const qp = SearchSchema.parse(Object.fromEntries(req.nextUrl.searchParams));
 
-    const qp = SearchSchema.parse(
-      Object.fromEntries(req.nextUrl.searchParams),
-    );
-
-    // (?cat=... — multiple allowed)
+    // (?cat=... — يسمح بعدّة قيَم)
     const catsArray = req.nextUrl.searchParams
       .getAll('cat')
-      .flatMap((v) => v.split(',').filter(Boolean));
+      .flatMap((v) => v.split(',').map((s) => s.trim()).filter(Boolean));
 
-    // Only published (or legacy docs without status)
+    // فقط المنشور، أو وثائق قديمة بلا status
     const filter: Filter<ArticleDoc> = {
       $or: [{ status: 'published' }, { status: { $exists: false } }],
     };
-    if (catsArray.length === 1) filter.categoryId = catsArray[0];
-    else if (catsArray.length > 1) filter.categoryId = { $in: catsArray };
+    if (catsArray.length === 1) {
+      filter.categoryId = catsArray[0];
+    } else if (catsArray.length > 1) {
+      filter.categoryId = { $in: catsArray };
+    }
 
     const skip = (qp.pageNo - 1) * qp.limit;
 
     const db = (await clientPromise).db();
     const coll = db.collection<ArticleDoc>('articles');
 
-    // ✅ Inclusion-only projection (avoids inclusion/exclusion conflict)
+    // إسقاط المحتوى الكبير من القائمة (نُظهر الملخّص فقط)
     const cursor = coll
       .find(filter, {
         projection: {
@@ -99,12 +116,11 @@ export async function GET(req: NextRequest) {
     const docs = await cursor.toArray();
     const total = await coll.countDocuments(filter);
 
-    const pick = (obj?: Record<string, string>) =>
-      obj?.[qp.locale] ?? Object.values(obj ?? {})[0] ?? '';
-
     const articles = docs.map((d) => ({
       _id: d._id?.toString(),
       slug: d.slug,
+      title: d.title,
+      excerpt: d.excerpt ?? '',
       categoryId: d.categoryId,
       coverUrl: d.coverUrl,
       videoUrl: d.videoUrl,
@@ -112,11 +128,7 @@ export async function GET(req: NextRequest) {
       createdAt: d.createdAt,
       updatedAt: d.updatedAt,
       readingTime: d.readingTime,
-      meta: d.meta?.coverPosition
-        ? { coverPosition: d.meta.coverPosition }
-        : undefined,
-      title: pick(d.title),
-      excerpt: pick(d.excerpt),
+      meta: d.meta?.coverPosition ? { coverPosition: d.meta.coverPosition } : undefined,
     }));
 
     const res = NextResponse.json({
@@ -129,21 +141,24 @@ export async function GET(req: NextRequest) {
     res.headers.set('Cache-Control', 's-maxage=60, stale-while-revalidate=30');
     return res;
   } catch (err) {
-    if (err instanceof ZodError)
+    if (err instanceof ZodError) {
       return responseError(err.issues.map((i) => i.message).join(' | '));
+    }
     console.error('GET /api/articles', err);
     return responseError('Server error', 500);
   }
 }
 
-/* ---------- POST (create) ---------- */
-// No page/status in body — we publish directly
+/* ------------------------------------------------------------------ */
+/*                              POST (create)                          */
+/* ------------------------------------------------------------------ */
+/** إنشاء مقال أحادي اللغة، ونشره مباشرةً (status='published'). */
 const ArticleSchema = z.object({
-  title: z.record(z.string(), z.string()),
-  excerpt: z.record(z.string(), z.string()).optional(),
-  content: z.record(z.string(), z.string()).optional(),
-  slug: z.string().min(3),
-  categoryId: z.string().min(1),
+  title: z.string().trim().min(1),
+  excerpt: z.string().trim().optional(),
+  content: z.string().trim().optional(),  // HTML
+  slug: z.string().trim().min(3),
+  categoryId: z.string().trim().min(1),
   coverUrl: relativeOrAbsoluteUrl.optional(),
   videoUrl: relativeOrAbsoluteUrl.optional(),
   meta: z
@@ -172,29 +187,39 @@ export async function POST(req: NextRequest) {
     const db = (await clientPromise).db();
     const coll = db.collection<ArticleDoc>('articles');
 
+    // slug يجب أن يكون فريدًا
     const dup = await coll.findOne({ slug: parsed.slug });
     if (dup) return responseError('Slug already exists', 409);
 
     const now = new Date();
 
-    const firstContent = parsed.content
-      ? Object.values(parsed.content)[0] || ''
-      : '';
-    const words = firstContent.trim().split(/\s+/).filter(Boolean).length;
+    // حساب وقت القراءة من المحتوى الأحادي (إن وُجد)
+    const firstContent = parsed.content ?? '';
+    const words = firstContent.replace(/<[^>]+>/g, ' ').trim().split(/\s+/).filter(Boolean).length;
     const minutes = Math.max(1, Math.ceil(words / 200));
 
-    await coll.insertOne({
-      ...parsed,
-      status: 'published', // publish directly
+    const doc: ArticleDoc = {
+      slug: parsed.slug,
+      title: parsed.title,
+      excerpt: parsed.excerpt,
+      content: parsed.content,
+      categoryId: parsed.categoryId,
+      coverUrl: parsed.coverUrl,
+      videoUrl: parsed.videoUrl,
+      meta: parsed.meta,
+      status: 'published',          // ← ننشر مباشرةً
       createdAt: now,
       updatedAt: now,
       readingTime: `${minutes} min read`,
-    });
+    };
+
+    await coll.insertOne(doc);
 
     return NextResponse.json({ slug: parsed.slug }, { status: 201 });
   } catch (err) {
-    if (err instanceof ZodError)
+    if (err instanceof ZodError) {
       return responseError(err.issues.map((i) => i.message).join(' | '));
+    }
     console.error('POST /api/articles', err);
     return responseError('Server error', 500);
   }

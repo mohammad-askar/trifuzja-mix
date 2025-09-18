@@ -6,9 +6,37 @@ import { useSearchParams } from 'next/navigation';
 
 type Locale = 'en' | 'pl';
 
+/** قديم: name كسلسلة — جديد: record */
+type LegacyName = string | Partial<Record<Locale, string>>;
+
 interface Category {
   _id: string;
-  name: Record<Locale, string>;
+  name: LegacyName;
+}
+
+/* --- Helpers آمنة نوعيًا --- */
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null;
+}
+
+function normalizeName(name: LegacyName): Record<Locale, string> {
+  if (typeof name === 'string') {
+    const v = name.trim();
+    return { en: v, pl: v };
+  }
+  const en = typeof name.en === 'string' ? name.en.trim() : '';
+  const pl = typeof name.pl === 'string' ? name.pl.trim() : '';
+  if (en || pl) return { en: en || pl, pl: pl || en };
+
+  // لو كان كائن وفيه مفاتيح أخرى نصية
+  if (isRecord(name)) {
+    const first = Object.values(name).find(
+      (val) => typeof val === 'string' && val.trim().length > 0,
+    ) as string | undefined;
+    const v = (first ?? '').trim();
+    return { en: v, pl: v };
+  }
+  return { en: '', pl: '' };
 }
 
 export default function CategoryChips({
@@ -22,7 +50,7 @@ export default function CategoryChips({
 }) {
   const search = useSearchParams();
 
-  // نحافظ على كل البارامترات ونبدّل cat فقط
+  // نحافظ على كل البارامترات ونبدّل cat فقط (اختيار مفرد)
   const buildHref = (catId?: string) => {
     const params = new URLSearchParams(search.toString());
     params.delete('cat');
@@ -31,8 +59,10 @@ export default function CategoryChips({
     return qs ? `?${qs}` : '?';
   };
 
-  const getLabel = (cat: Category) =>
-    cat.name?.[locale] || cat.name?.en || cat.name?.pl || cat._id.slice(0, 6);
+  const getLabel = (cat: Category) => {
+    const n = normalizeName(cat.name);
+    return n[locale] || n.en || n.pl || cat._id.slice(0, 6);
+  };
 
   // نواة مشتركة للشيب
   const core =
@@ -46,7 +76,7 @@ export default function CategoryChips({
     ' bg-white/70 dark:bg-zinc-900/70 border-zinc-200 dark:border-zinc-700 ' +
     'hover:bg-white dark:hover:bg-zinc-800 shadow-sm';
 
-  // الحالة المفعّلة — أزرق واضح
+  // الحالة المفعّلة
   const active =
     core +
     ' bg-blue-600 text-white border-blue-600 hover:bg-blue-600 ' +
@@ -72,6 +102,11 @@ export default function CategoryChips({
             href={buildHref(cat._id)}
             className={isActive ? active : base}
             aria-pressed={isActive}
+            aria-label={
+              isActive
+                ? `${getLabel(cat)} (active)`
+                : `${getLabel(cat)}`
+            }
           >
             {getLabel(cat)}
           </Link>

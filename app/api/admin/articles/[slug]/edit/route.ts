@@ -1,14 +1,14 @@
-// app/api/admin/articles/[slug]/edit/route.ts  (أو مسارك المكافئ)
+// app/api/admin/articles/[slug]/edit/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import clientPromise from '@/types/mongodb';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/authOptions';
 import { z } from 'zod';
 
-// في Dynamic API Routes، Next.js يمرّر params كـ Promise
+/** Next يمرّر params كـ Promise في Route Handlers */
 type Ctx = { params: Promise<{ slug: string }> };
 
-// نقبل URL مطلق أو مسار يبدأ بـ /
+/** مسار مطلق أو يبدأ بـ / */
 const urlOrAppPath = z
   .string()
   .min(1)
@@ -16,7 +16,7 @@ const urlOrAppPath = z
     message: 'Must be an absolute URL or a path starting with "/"',
   });
 
-// ✅ بدون page وبدون status
+/** حمولة حفظ المقال — حقول مسطّحة (بولندية فقط) */
 const BodySchema = z.object({
   title: z.string().min(1),
   excerpt: z.string().optional(),
@@ -25,17 +25,45 @@ const BodySchema = z.object({
   coverUrl: urlOrAppPath.optional(),
   heroImageUrl: urlOrAppPath.optional(),
   videoUrl: urlOrAppPath.optional(),
-  readingTime: z.number().int().nonnegative().optional(),
+  // نقبل رقمًا أو نصًا ونخزّنه كنص
+  readingTime: z.union([z.number().int().nonnegative(), z.string().min(1)]).optional(),
   meta: z.record(z.string(), z.unknown()).optional(),
 });
 type Body = z.infer<typeof BodySchema>;
+
+type AdminSessionShape =
+  | {
+      user?: { role?: string | null } | null;
+    }
+  | null
+  | undefined;
+
+function isObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null;
+}
+
+/** حارس نوعي بدون any */
+function requireAdmin(session: unknown): session is AdminSessionShape & {
+  user: { role: string };
+} {
+  if (!isObject(session)) return false;
+  const user = (session as Record<string, unknown>)['user'];
+  if (!isObject(user)) return false;
+  const role = (user as Record<string, unknown>)['role'];
+  return role === 'admin';
+}
+
+function toPlainStringReadingTime(rt?: Body['readingTime']): string | undefined {
+  if (rt === undefined) return undefined;
+  return typeof rt === 'number' ? String(rt) : rt;
+}
 
 /* -------------------------------- GET -------------------------------- */
 export async function GET(_req: NextRequest, ctx: Ctx) {
   const { slug } = await ctx.params;
 
   const session = await getServerSession(authOptions);
-  if (!session || (session.user as { role?: string }).role !== 'admin') {
+  if (!requireAdmin(session)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
   if (!slug) {
@@ -50,7 +78,7 @@ export async function GET(_req: NextRequest, ctx: Ctx) {
       return NextResponse.json({ error: 'Article not found' }, { status: 404 });
     }
 
-    return NextResponse.json(article);
+    return NextResponse.json(article, { status: 200 });
   } catch (error) {
     console.error('Failed to fetch article:', error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
@@ -58,12 +86,11 @@ export async function GET(_req: NextRequest, ctx: Ctx) {
 }
 
 /* -------------------------------- PUT -------------------------------- */
-// ينشر مباشرة: status='published' دائماً عند الحفظ
 export async function PUT(req: NextRequest, ctx: Ctx) {
   const { slug } = await ctx.params;
 
   const session = await getServerSession(authOptions);
-  if (!session || (session.user as { role?: string }).role !== 'admin') {
+  if (!requireAdmin(session)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
   if (!slug) {
@@ -88,35 +115,38 @@ export async function PUT(req: NextRequest, ctx: Ctx) {
     const db = (await clientPromise).db();
     const articles = db.collection('articles');
 
-    // نبني $set بدون undefined
-    const setEntries: [string, unknown][] = [
-      ['title', data.title],
-      ['excerpt', data.excerpt],
-      ['content', data.content],
-      ['categoryId', data.categoryId],
-      ['videoUrl', data.videoUrl],
-      ['readingTime', data.readingTime],
-      ['meta', data.meta],
-      ['updatedAt', new Date()],
-      // ✅ ننشر دائمًا
-      ['status', 'published'],
-    ].filter(([, v]) => v !== undefined) as [string, unknown][];
+    const unifiedCover = data.coverUrl ?? data.heroImageUrl;
 
-    // توحيد coverUrl و heroImageUrl
-    const cover = data.coverUrl ?? data.heroImageUrl;
-    if (cover !== undefined) {
-      setEntries.push(['coverUrl', cover], ['heroImageUrl', cover]);
+    // نبني $set بدون undefined
+    const set: Record<string, unknown> = {
+      title: data.title,
+      content: data.content,
+      updatedAt: new Date(),
+      status: 'published', // ننشر دائمًا
+    };
+    if (data.excerpt !== undefined) set.excerpt = data.excerpt;
+    if (data.categoryId !== undefined) set.categoryId = data.categoryId;
+    if (data.videoUrl !== undefined) set.videoUrl = data.videoUrl;
+    if (data.meta !== undefined) set.meta = data.meta;
+
+    const rt = toPlainStringReadingTime(data.readingTime);
+    if (rt !== undefined) set.readingTime = rt;
+
+    if (unifiedCover !== undefined) {
+      set.coverUrl = unifiedCover;
+      set.heroImageUrl = unifiedCover;
     }
 
-    const set = Object.fromEntries(setEntries);
-
     const updateResult = await articles.updateOne({ slug }, { $set: set });
-
     if (updateResult.matchedCount === 0) {
       return NextResponse.json({ error: 'Article not found' }, { status: 404 });
     }
 
-    return NextResponse.json({ message: 'Article updated successfully' }, { status: 200 });
+    const updated = await articles.findOne({ slug });
+    return NextResponse.json(
+      { message: 'Article updated successfully', article: updated },
+      { status: 200 },
+    );
   } catch (error) {
     console.error('Failed to update article:', error);
     return NextResponse.json({ error: 'Failed to update article' }, { status: 500 });

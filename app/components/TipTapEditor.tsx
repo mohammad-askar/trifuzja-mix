@@ -34,9 +34,10 @@ import CharacterCount from '@tiptap/extension-character-count';
 import { Node as ProseMirrorNode } from 'prosemirror-model';
 import { mergeAttributes } from '@tiptap/core';
 import dynamic from 'next/dynamic';
-
 import { FontSize } from './editor/extensions/FontSize';
 import EditorMenuBar from './EditorMenuBar';
+import Paragraph from '@tiptap/extension-paragraph';
+import Heading from '@tiptap/extension-heading';
 
 interface Props {
   content: string;
@@ -44,7 +45,10 @@ interface Props {
   placeholder?: string;
   minHeightPx?: number;
   theme?: 'auto' | 'light' | 'dark';
+  onSave?: () => void;   // <— جديد
+  saving?: boolean;      // <— جديد (اختياري لعرض حالة الحفظ)
 }
+
 
 type Align = 'left' | 'center' | 'right' | 'inline';
 
@@ -544,52 +548,182 @@ export default function TipTapEditor({
         document.documentElement.classList.contains('dark')
       : theme === 'dark';
 
-  const editor = useEditor({
-    extensions: [
-      StarterKit.configure({ heading: { levels: [1, 2, 3] } }),
-      Underline,
-      TextStyle,
-      Color,
-      FontSize,
-      Link.configure({ autolink: true, openOnClick: false }),
-      ResizableImage,
-      Placeholder.configure({ placeholder }),
-      Highlight,
-      HorizontalRule,
-      CodeBlockLowlight.configure({
-        lowlight,
-        HTMLAttributes: {
-          class:
-            'my-3 rounded bg-zinc-900/90 text-zinc-100 p-3 text-sm overflow-x-auto',
+// helper
+const readNumber = (re: RegExp, style = '') =>
+  (style.match(re)?.[1] ? Math.round(parseFloat(style.match(re)![1])) : 0);
+
+const IndentableParagraph = Paragraph.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      indent: {
+        default: 0,
+        parseHTML: (el: HTMLElement) => {
+          const data = el.getAttribute('data-indent');
+          if (data) return parseInt(data, 10) || 0;
+          const style = el.getAttribute('style') ?? '';
+          // نقرأ text-indent لو كان موجودًا
+          return readNumber(/text-indent:\s*([\d.]+)em/i, style);
         },
-      }),
-      Table.configure({ resizable: true }),
-      TableRow,
-      TableHeader,
-      TableCell,
-      CharacterCount.configure({ limit: 50000 }),
-    ],
-    content,
-    onUpdate: ({ editor: ed }) => setContent(ed.getHTML()),
-    editorProps: {
-      attributes: {
+        renderHTML: (attrs: { indent?: number }) => {
+          const i = attrs.indent ?? 0;
+          // أهم شيء: نستخدم text-indent ونصفّر أي margin/padding لئلا يتحرك البلوك كله
+          return {
+            'data-indent': String(i),
+            style: `text-indent:${i}em;margin-left:0;padding-left:0;`,
+          };
+        },
+      },
+    };
+  },
+});
+
+const IndentableHeading = Heading.extend({
+  addOptions() {
+    return { ...this.parent?.(), levels: [1, 2, 3] };
+  },
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      indent: {
+        default: 0,
+        parseHTML: (el: HTMLElement) => {
+          const data = el.getAttribute('data-indent');
+          if (data) return parseInt(data, 10) || 0;
+          const style = el.getAttribute('style') ?? '';
+          return readNumber(/margin-left:\s*([\d.]+)em/i, style);
+        },
+        renderHTML: (attrs: { indent?: number }) => {
+          const i = attrs.indent ?? 0;
+          // العناوين تبقى margin-left (منطقي للعناوين)
+          return {
+            'data-indent': String(i),
+            style: `margin-left:${i}em;`,
+          };
+        },
+      },
+    };
+  },
+});
+
+
+
+// مهم: عطّل heading/paragraph في StarterKit لأنك تستخدم نسخًا ممدّدة:
+const editor = useEditor({
+  extensions: [
+    StarterKit.configure({
+      heading: false,
+      paragraph: false,
+      // اترك باقي إعدادات StarterKit كما تحتاج
+    }),
+    IndentableParagraph,
+    IndentableHeading,
+    Underline,
+    TextStyle,
+    Color,
+    FontSize,
+    Link.configure({ autolink: true, openOnClick: false }),
+    ResizableImage,
+    Placeholder.configure({ placeholder }),
+    Highlight,
+    HorizontalRule,
+    CodeBlockLowlight.configure({
+      lowlight,
+      HTMLAttributes: {
         class:
-          'tiptap prose dark:prose-invert max-w-none focus:outline-none p-3 md:p-4',
+          'my-3 rounded bg-zinc-900/90 text-zinc-100 p-3 text-sm overflow-x-auto',
       },
-      handleDrop: (_view, event) => {
-        const files = event.dataTransfer?.files;
-        if (!files || files.length === 0) return false;
-        const file = files[0];
-        if (file.type.startsWith('image/')) {
-          event.preventDefault();
-          openCropper(file);
-          return true;
-        }
-        return false;
-      },
+    }),
+    Table.configure({ resizable: true }),
+    TableRow,
+    TableHeader,
+    TableCell,
+    CharacterCount.configure({ limit: 50000 }),
+  ],
+  content,
+  onUpdate: ({ editor: ed }) => setContent(ed.getHTML()),
+  editorProps: {
+    attributes: {
+      class:
+        'tiptap prose dark:prose-invert max-w-none focus:outline-none p-3 md:p-4',
     },
-    immediatelyRender: false,
-  });
+
+handleKeyDown: (_view, event) => {
+  if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+    event.preventDefault();
+    editor?.chain().focus().insertContent('<p><br /></p>').run();
+    return true;
+  }
+
+  if (event.key === 'Tab') {
+    if (!editor) return false;
+
+    // اترك Tab طبيعي داخل الجداول/بلوك الكود
+    if (editor.isActive('table') || editor.isActive('codeBlock')) return false;
+
+    event.preventDefault();
+
+    // داخل القوائم
+    if (editor.isActive('listItem')) {
+      if (event.shiftKey) {
+        if (editor.can().liftListItem('listItem')) {
+          editor.chain().focus().liftListItem('listItem').run();
+        }
+      } else {
+        if (editor.can().sinkListItem('listItem')) {
+          editor.chain().focus().sinkListItem('listItem').run();
+        }
+      }
+      return true;
+    }
+
+    // خارج القوائم
+    const isHeading = editor.isActive('heading');
+
+    // لو المؤشر داخل السطر (مش في بدايته) وأنت في فقرة، أدخل تبويب كأحرف NBSP
+    const { state } = editor;
+    const { empty, $from } = state.selection;
+    const atStartOfBlock = empty && $from.parentOffset === 0 && !$from.nodeBefore;
+
+    if (!isHeading && !atStartOfBlock) {
+      // 4 مسافات غير قابلة للكسر (لن تنطوي بعد الحفظ)
+      editor.chain().focus().insertContent('\u00A0\u00A0\u00A0\u00A0').run();
+      return true;
+    }
+
+    // بداية الفقرة/العنوان: عدّل قيمة الإزاحة
+    const cur =
+      (editor.getAttributes(isHeading ? 'heading' : 'paragraph')?.indent as number) ?? 0;
+    const next = Math.max(0, Math.min(6, cur + (event.shiftKey ? -1 : 1)));
+
+    editor
+      .chain()
+      .focus()
+      .updateAttributes(isHeading ? 'heading' : 'paragraph', { indent: next })
+      .run();
+
+    return true;
+  }
+
+  return false;
+},
+
+
+    handleDrop: (_view, event) => {
+      const files = event.dataTransfer?.files;
+      if (!files || files.length === 0) return false;
+      const file = files[0];
+      if (file.type.startsWith('image/')) {
+        event.preventDefault();
+        openCropper(file);
+        return true;
+      }
+      return false;
+    },
+  },
+  immediatelyRender: false,
+});
+
 
   const insertImg = useCallback(
     (url: string, altText?: string) => {

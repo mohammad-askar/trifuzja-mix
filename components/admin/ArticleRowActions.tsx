@@ -1,28 +1,26 @@
 'use client';
+
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ui/useConfirm';
 
+type Locale = 'en' | 'pl';
+
 interface ArticleRowActionsProps {
   slug: string;
-  locale: 'en' | 'pl';
-  status: 'draft' | 'published';
+  locale: Locale;
 }
 
-export default function ArticleRowActions({
-  slug,
-  locale,
-  status,
-}: ArticleRowActionsProps) {
+export default function ArticleRowActions({ slug, locale }: ArticleRowActionsProps) {
   const router = useRouter();
-  const [toggling, setToggling] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const { confirm, ConfirmModal } = useConfirm();
 
-  async function handleDelete() {
+  async function handleDelete(): Promise<void> {
     if (deleting) return;
+
     const ok = await confirm({
       title: locale === 'pl' ? 'Usuń artykuł' : 'Delete article',
       message:
@@ -37,52 +35,17 @@ export default function ArticleRowActions({
 
     setDeleting(true);
     try {
-      const res = await fetch(`/api/admin/articles/${slug}`, {
-        method: 'DELETE',
-      });
-      const out = await res.json();
+      const res = await fetch(`/api/admin/articles/${slug}`, { method: 'DELETE' });
+      const out = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) throw new Error(out.error || 'Delete failed');
       toast.success(locale === 'pl' ? 'Usunięto' : 'Deleted');
       router.refresh();
     } catch (e) {
       toast.error(
-        (e as Error).message ||
-          (locale === 'pl' ? 'Błąd usuwania' : 'Delete error'),
+        e instanceof Error ? e.message : locale === 'pl' ? 'Błąd usuwania' : 'Delete error',
       );
     } finally {
       setDeleting(false);
-    }
-  }
-
-  async function togglePublish() {
-    if (toggling) return;
-    setToggling(true);
-    const newStatus = status === 'draft' ? 'published' : 'draft';
-    try {
-      const res = await fetch(`/api/admin/articles/${slug}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus }),
-      });
-      const out = await res.json();
-      if (!res.ok) throw new Error(out.error || 'Status update failed');
-      toast.success(
-        newStatus === 'published'
-          ? locale === 'pl'
-            ? 'Opublikowano'
-            : 'Published'
-          : locale === 'pl'
-          ? 'Cofnięto'
-          : 'Unpublished',
-      );
-      router.refresh();
-    } catch (e) {
-      toast.error(
-        (e as Error).message ||
-          (locale === 'pl' ? 'Błąd' : 'Error'),
-      );
-    } finally {
-      setToggling(false);
     }
   }
 
@@ -95,33 +58,16 @@ export default function ArticleRowActions({
         >
           {locale === 'pl' ? 'Edytuj' : 'Edit'}
         </Link>
+
         <Link
           href={`/${locale}/articles/${slug}`}
           className="px-2 py-1 bg-zinc-600 hover:bg-zinc-700 text-white rounded text-xs"
           target="_blank"
+          rel="noopener noreferrer"
         >
           {locale === 'pl' ? 'Podgląd' : 'View'}
         </Link>
-        <button
-          type="button"
-          onClick={togglePublish}
-          disabled={toggling}
-          className={`px-2 py-1 rounded text-xs font-medium text-white ${
-            status === 'draft'
-              ? 'bg-indigo-600 hover:bg-indigo-700'
-              : 'bg-amber-600 hover:bg-amber-700'
-          } disabled:opacity-50`}
-        >
-          {toggling
-            ? '...'
-            : status === 'draft'
-            ? locale === 'pl'
-              ? 'Publikuj'
-              : 'Publish'
-            : locale === 'pl'
-            ? 'Cofnij'
-            : 'Unpub'}
-        </button>
+
         <button
           type="button"
           onClick={handleDelete}

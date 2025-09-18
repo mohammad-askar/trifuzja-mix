@@ -1,4 +1,3 @@
-//E:\trifuzja-mix\app\components\ArticleEditor.tsx
 'use client';
 
 import React, {
@@ -51,9 +50,7 @@ const T = {
   },
 } as const;
 
-
 /* ------------------------------ Form Schema --------------------------- */
-// ✅ بدون page وبدون status
 const schema = z.object({
   title: z.string().trim().min(4, 'Too small: expected >3 characters').max(140),
   excerpt: z.string().trim().min(4, 'Too small: expected >3 characters').max(400),
@@ -70,6 +67,15 @@ const readingTimeFromHtml = (html: string, unit: string) => {
   return `${minutes} ${unit}`;
 };
 const lenGT3 = (s: string) => s.trim().length > 3;
+
+// يقبل حقول قديمة (Record<Locale,string>) أو الجديدة (string)
+const fromAny = (
+  val: string | Record<Locale, string> | undefined,
+  preferred: Locale,
+): string => {
+  if (typeof val === 'string') return val;
+  return (val?.[preferred] ?? val?.pl ?? val?.en ?? '') as string;
+};
 
 /* ------------------------------ Hooks --------------------------------- */
 export function useDebouncedCallback<A extends unknown[]>(
@@ -111,13 +117,13 @@ const TipTap = dynamic(() => import('@/app/components/TipTapEditor'), {
 
 /* --------------------------- Component Props -------------------------- */
 interface Props {
-  locale: Locale;
+  locale: Locale;               // واجهة الإدارة فقط
   mode: 'create' | 'edit';
   defaultData?: Partial<{
     slug: string;
-    title: Record<Locale, string>;
-    excerpt: Record<Locale, string>;
-    content: Record<Locale, string>;
+    title: string | Record<Locale, string>;
+    excerpt: string | Record<Locale, string>;
+    content: string | Record<Locale, string>;
     categoryId: string;
     coverUrl: string;
     videoUrl: string;
@@ -137,23 +143,42 @@ export default function ArticleEditor({
   const isEdit = mode === 'edit';
   const text = T[locale];
 
+  const formRef = useRef<HTMLFormElement>(null);
+  const [fabRight, setFabRight] = useState<number>(24); // المسافة من يمين الشاشة لضبط الزر داخل إطار المقال
+
+  // يحسب إزاحة الزر من يمين الشاشة بحيث يبقى بمحاذاة حدود النموذج (max-w-7xl)
+  const updateFabRight = useCallback(() => {
+    const rect = formRef.current?.getBoundingClientRect();
+    const right = Math.max(16, window.innerWidth - ((rect?.right ?? window.innerWidth)) + 16);
+    setFabRight(right);
+  }, []);
+  useEffect(() => {
+    updateFabRight();
+    window.addEventListener('resize', updateFabRight);
+    window.addEventListener('scroll', updateFabRight, { passive: true });
+    return () => {
+      window.removeEventListener('resize', updateFabRight);
+      window.removeEventListener('scroll', updateFabRight);
+    };
+  }, [updateFabRight]);
+
   const {
     register, handleSubmit, watch,
     formState: { errors, isSubmitting, dirtyFields },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
-      title: defaultData.title?.[locale] ?? '',
-      excerpt: defaultData.excerpt?.[locale] ?? '',
+      title: fromAny(defaultData.title, locale),
+      excerpt: fromAny(defaultData.excerpt, locale),
       categoryId: defaultData.categoryId ?? '',
       videoUrl: defaultData.videoUrl ?? '',
     },
   });
 
-  const [content, setContent] = useState<string>(defaultData.content?.[locale] ?? '');
+  const [content, setContent] = useState<string>(fromAny(defaultData.content, locale));
   const [cover, setCover] = useState(defaultData.coverUrl ?? '');
 
-  // نقطة التركيز للصورة (X/Y)
+  // نقطة التركيز للصورة
   const [coverPosition, setCoverPosition] = useState<CoverPosition>(() => {
     const pos = defaultData.meta?.coverPosition;
     if (typeof pos === 'string') {
@@ -183,7 +208,7 @@ export default function ArticleEditor({
   const autoSlug = useMemo(() => makeSlug(titleVal), [titleVal]);
   const visibleSlug = isEdit ? (defaultData.slug as string) : autoSlug;
 
-  // ✅ تحميل التصنيفات — بدون Page
+  // تحميل التصنيفات
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -209,14 +234,9 @@ export default function ArticleEditor({
   );
   const reading = readingTimeFromHtml(content, text.readTime);
 
-  // ✅ تمكين الإنشاء والحفظ التلقائي بمجرد اكتمال الأساسيات (بدون إلزام محتوى)
-  const basicsReady =
-    lenGT3(titleVal) && lenGT3(excerptVal) && lenGT3(categoryId);
-
+  const basicsReady = lenGT3(titleVal) && lenGT3(excerptVal) && lenGT3(categoryId);
   const ready = basicsReady;
-
-  const canSubmit =
-    basicsReady && !isSubmitting && (isEdit || slugAvailable !== false);
+  const canSubmit = basicsReady && !isSubmitting && (isEdit || slugAvailable !== false);
 
   const checkSlugAvailability = useCallback(async (slug: string) => {
     if (!slug || slug.length < 3) return setSlugAvailable(null);
@@ -242,7 +262,7 @@ export default function ArticleEditor({
     return () => window.removeEventListener('beforeunload', handler);
   }, [dirty]);
 
-  // سحب/تحريك نقطة التركيز
+  // سحب/تحريك نقطة التركيز للصورة
   const handleFocalPointMove = useCallback((clientX: number, clientY: number) => {
     if (!coverContainerRef.current) return;
     const rect = coverContainerRef.current.getBoundingClientRect();
@@ -261,19 +281,21 @@ export default function ArticleEditor({
     }
   }, [handleFocalPointMove]);
 
-  // ✅ Autosave بدون status/page — يعتمد الآن على basicsReady
+  // Autosave (يحفظ كحقول بسيطة بدون لغات)
   const autosave = useCallback(async () => {
     if (!ready || (!isEdit && slugAvailable === false)) return;
+
     const payload = {
-      title: { ...(defaultData.title || {}), [locale]: titleVal },
-      excerpt: { ...(defaultData.excerpt || {}), [locale]: excerptVal },
-      content: { ...(defaultData.content || {}), [locale]: content },
+      title: titleVal,
+      excerpt: excerptVal,
+      content,                 // string
       categoryId,
       coverUrl: cover || undefined,
       videoUrl: (watch('videoUrl') || '').trim() || undefined,
       readingTime: reading,
       meta: { ...(defaultData.meta || {}), coverPosition },
     };
+
     try {
       setSaving(true);
       const r = await fetch(`/api/admin/articles/${encodeURIComponent(visibleSlug)}`, {
@@ -284,7 +306,7 @@ export default function ArticleEditor({
       if (r.ok) { setDirty(false); setLastSavedAt(new Date()); }
     } finally { setSaving(false); }
   }, [
-    ready, isEdit, slugAvailable, defaultData, locale, titleVal, excerptVal, content,
+    ready, isEdit, slugAvailable, defaultData, titleVal, excerptVal, content,
     categoryId, cover, reading, visibleSlug, watch, coverPosition,
   ]);
 
@@ -294,7 +316,7 @@ export default function ArticleEditor({
   ]);
 
   const onKeyDown = (e: KeyboardEvent<HTMLFormElement>) => {
-    const isMac = navigator.platform.toUpperCase().includes('MAC');
+    const isMac = typeof navigator !== 'undefined' && navigator.platform.toUpperCase().includes('MAC');
     const saveCombo =
       (isMac && e.metaKey && e.key.toLowerCase() === 's') ||
       (!isMac && e.ctrlKey && e.key.toLowerCase() === 's');
@@ -321,7 +343,6 @@ export default function ArticleEditor({
     [handleMouseMove, handleMouseUp, handleTouchMove],
   );
 
-  // تنظيف المستمعين عند تفكيك المكوّن
   useEffect(() => {
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
@@ -331,19 +352,22 @@ export default function ArticleEditor({
     };
   }, [handleMouseMove, handleMouseUp, handleTouchMove]);
 
+  // Submit (يحفظ حقول بسيطة)
   const onSubmit = async (fv: FormValues) => {
     if (!isEdit && slugAvailable === false) { toast.error(text.slugInUse); return; }
     const slugForSubmit = visibleSlug;
+
     const payload = {
-      title: { ...(defaultData.title || {}), [locale]: fv.title },
-      excerpt: { ...(defaultData.excerpt || {}), [locale]: fv.excerpt },
-      content: { ...(defaultData.content || {}), [locale]: content },
+      title: fv.title,
+      excerpt: fv.excerpt,
+      content,                     // string
       categoryId: fv.categoryId,
       coverUrl: cover || undefined,
       videoUrl: fv.videoUrl?.trim() || undefined,
       readingTime: reading,
       meta: { ...(defaultData.meta || {}), coverPosition },
     };
+
     const res = await fetch(`/api/admin/articles/${encodeURIComponent(slugForSubmit)}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -362,10 +386,11 @@ export default function ArticleEditor({
 
   return (
     <form
+      ref={formRef}
       onSubmit={handleSubmit(onSubmit)}
       onKeyDown={onKeyDown}
       aria-describedby="save-hint"
-      className="space-y-4 max-w-7xl mx-auto p-4 bg-white/80 dark:bg-zinc-900/80 rounded-xl border border-gray-200 dark:border-zinc-800 shadow-sm"
+      className="space-y-4 max-w-7xl mx-auto p-4 bg-white/80 dark:bg-zinc-900/80 rounded-xl border border-gray-200 dark:border-zinc-800 shadow-sm pb-24"
     >
       {/* Title & slug */}
       <div className="space-y-2">
@@ -376,7 +401,7 @@ export default function ArticleEditor({
         />
         <div className="flex flex-wrap items-center gap-2 justify-between text-xs text-gray-500 dark:text-gray-400">
           {errors.title ? <span className="text-red-600">{errors.title.message}</span> : <span>{text.pressToSave}</span>}
-          <span>{titleVal.length}/140</span>
+          <span>{(watch('title') || '').length}/140</span>
         </div>
         <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 select-all">
           <span className="rounded bg-gray-100 dark:bg-zinc-800 px-2 py-0.5">/{visibleSlug}</span>
@@ -395,7 +420,7 @@ export default function ArticleEditor({
         />
         <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400">
           {errors.excerpt && <span className="text-red-600">{errors.excerpt.message}</span>}
-          <span>{excerptVal.length}/400</span>
+          <span>{(watch('excerpt') || '').length}/400</span>
         </div>
       </div>
 
@@ -421,14 +446,13 @@ export default function ArticleEditor({
         )}
       </div>
 
-      {/* TipTap Editor — مع padding خفيف */}
+      {/* TipTap Editor */}
       <div className="space-y-1 rounded-lg border border-gray-200 dark:border-zinc-700 p-3">
         <TipTap content={content} setContent={setContent} />
         <div className="flex justify-between gap-2 text-xs text-gray-500 dark:text-gray-400">
           <span>
             {words} {text.words} • {reading}
           </span>
-          {/* تمت إزالة تنبيه Add ≥20 words بالكامل */}
         </div>
       </div>
 
@@ -493,23 +517,26 @@ export default function ArticleEditor({
         )}
       </div>
 
-      {/* Action Bar */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-t pt-3 mt-2 text-xs text-gray-600 dark:text-gray-400">
+      {/* شريط الحالة */}
+      <div className="border-t pt-3 mt-2 text-xs text-gray-600 dark:text-gray-400">
         <div className="flex items-center gap-3">
           {saving && <span>{text.saving}</span>}
           {!saving && !dirty && lastSavedAt && <span>{text.savedAt(lastSavedAt.toLocaleTimeString())}</span>}
           {(Object.keys(dirtyFields).length > 0 || dirty) && <span className="text-orange-600">{text.unsaved}</span>}
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="submit"
-            disabled={!canSubmit}
-            className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-sm font-semibold transition"
-          >
-            {isSubmitting ? text.saving : isEdit ? text.save : text.create}
-          </button>
-        </div>
       </div>
+
+      {/* زر حفظ عائم داخل حدود المقال (محاذاة ديناميكية) */}
+      <button
+        type="submit"
+        disabled={!canSubmit || isSubmitting}
+        className="fixed bottom-6 z-[1000] rounded-full shadow-lg px-5 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold"
+        style={{ right: fabRight }}
+        aria-label="Save"
+        title={isSubmitting ? text.saving : (isEdit ? text.save : text.create)}
+      >
+        {isSubmitting ? text.saving : (isEdit ? text.save : text.create)}
+      </button>
     </form>
   );
 }

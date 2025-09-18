@@ -1,3 +1,4 @@
+// app/components/AdminArticlesClient.tsx
 'use client';
 
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
@@ -7,8 +8,7 @@ interface Row {
   id: string;
   slug: string;
   title: string;
-  page: string;
-  status: 'draft' | 'published';
+  page: string;          // للعرض فقط
   createdAt?: string;
 }
 
@@ -18,104 +18,81 @@ interface ClientProps {
   total: number;
   pageNo: number;
   totalPages: number;
-  limit: number;              // ✅ مُبقاة فقط للمستقبل (يمكن حذفها لو أردت)
+  limit: number;         // اختياري للاستخدام المستقبلي
   initialSearch: string;
-  initialStatus: string;
-  initialPageKey: string;
 }
 
-/**
- * AdminArticlesClient
- * واجهة تفاعلية للفلاتر + التصفح (Pagination) مبنية على SSR.
- * كل تغيير في الفلاتر يُعاد توجيهه (router.replace) مع query جديدة.
- */
 export default function AdminArticlesClient({
   locale,
   initialRows,
   total,
   pageNo,
   totalPages,
-  // limit,  // ← لو لا تحتاجه الآن احذفه من البارامترات
+  // limit,
   initialSearch,
-  initialStatus,
-  initialPageKey,
 }: ClientProps) {
-
   const router       = useRouter();
   const searchParams = useSearchParams();
   const pathname     = usePathname();
 
-  // حالات الفلاتر
-  const [search, setSearch]   = useState(initialSearch);
-  const [status, setStatus]   = useState(initialStatus);
-  const [pageKey, setPageKey] = useState(initialPageKey);
-  const [navigating, setNavigating] = useState(false);
+  // فلتر واحد فقط: البحث
+  const [search, setSearch] = useState<string>(initialSearch);
+  const [navigating, setNavigating] = useState<boolean>(false);
 
   const t = useCallback(
     (en: string, pl: string) => (locale === 'pl' ? pl : en),
     [locale],
   );
 
-  /* -------- بناء / تحديث الاستعلام -------- */
-  const buildParams = useCallback(() => {
+  /* ---------- بناء / تحديث الاستعلام (بحث فقط) ---------- */
+  const buildParams = useCallback((): URLSearchParams => {
     const params = new URLSearchParams(searchParams?.toString() || '');
-    function setOrDel(k: string, v: string) {
-      if (v) params.set(k, v);
-      else params.delete(k);
-    }
-    setOrDel('search', search.trim());
-    setOrDel('status', status);
-    setOrDel('pageKey', pageKey);
+    const q = search.trim();
+    if (q) params.set('search', q);
+    else params.delete('search');
     return params;
-  }, [search, status, pageKey, searchParams]);
+  }, [search, searchParams]);
 
-  const pushQueryFirstPage = useCallback(() => {
+  const pushQueryFirstPage = useCallback((): void => {
     const params = buildParams();
-    params.set('page', '1'); // العودة للصفحة الأولى عند تغيير فلتر
+    params.set('page', '1'); // ارجع لأول صفحة مع أي تغيير
     setNavigating(true);
     router.replace(`${pathname}?${params.toString()}`, { scroll: false });
   }, [buildParams, router, pathname]);
 
   // بحث (debounce)
   useEffect(() => {
-    const id = setTimeout(() => {
+    const id = window.setTimeout(() => {
       pushQueryFirstPage();
     }, 400);
-    return () => clearTimeout(id);
+    return () => window.clearTimeout(id);
   }, [search, pushQueryFirstPage]);
 
-  // تغيّر الحالة أو الصفحة (بدون debounce)
-  useEffect(() => {
-    pushQueryFirstPage();
-  }, [status, pageKey, pushQueryFirstPage]);
-
-  function resetAll() {
+  function resetAll(): void {
     setSearch('');
-    setStatus('');
-    setPageKey('');
     setNavigating(true);
     router.replace(pathname, { scroll: false });
   }
 
-  function goto(p: number) {
+  function goto(p: number): void {
     const params = buildParams();
     params.set('page', String(p));
     setNavigating(true);
     router.replace(`${pathname}?${params.toString()}`, { scroll: false });
   }
 
-  // للتلوين النشط للصفحة
-  const pagesArray = useMemo(
+  const pagesArray = useMemo<number[]>(
     () => Array.from({ length: totalPages }, (_, i) => i + 1),
     [totalPages],
   );
 
-  // إنهاء حالة navigating بمجرد تغيّر أي من قيم SSR (نظرياً يتحقق عند re-render)
+  // إنهاء حالة الـ navigating بعد إعادة الرندر بالبيانات الجديدة
   useEffect(() => {
     if (navigating) {
-      const timer = setTimeout(() => setNavigating(false), 150);
-      return () => clearTimeout(timer);
+      const timer = window.setTimeout(() => setNavigating(false), 150);
+      return () => window.clearTimeout(timer);
     }
+    return undefined;
   }, [navigating, initialRows, pageNo, total]);
 
   return (
@@ -133,39 +110,6 @@ export default function AdminArticlesClient({
             placeholder={t('Title or slug…', 'Tytuł lub slug…')}
             className="w-full rounded-md border px-3 py-2 text-sm bg-white dark:bg-zinc-900"
           />
-        </div>
-
-        {/* Page filter */}
-        <div>
-          <label className="block text-xs font-semibold mb-1">
-            {t('Page', 'Strona')}
-          </label>
-          <select
-            value={pageKey}
-            onChange={e => setPageKey(e.target.value)}
-            className="rounded-md border px-3 py-2 text-sm bg-white dark:bg-zinc-900"
-          >
-            <option value="">{t('All', 'Wszystko')}</option>
-            <option value="multi">multi</option>
-            <option value="terra">terra</option>
-            <option value="daily">daily</option>
-          </select>
-        </div>
-
-        {/* Status filter */}
-        <div>
-          <label className="block text-xs font-semibold mb-1">
-            {t('Status', 'Status')}
-          </label>
-          <select
-            value={status}
-            onChange={e => setStatus(e.target.value)}
-            className="rounded-md border px-3 py-2 text-sm bg-white dark:bg-zinc-900"
-          >
-            <option value="">{t('All', 'Wszystko')}</option>
-            <option value="draft">{t('Draft', 'Szkic')}</option>
-            <option value="published">{t('Published', 'Opublikowany')}</option>
-          </select>
         </div>
 
         {/* Reset */}
@@ -197,14 +141,13 @@ export default function AdminArticlesClient({
         </div>
       </div>
 
-      {/* Table */}
+      {/* Table (بدون عمود Status وأي فلاتر صفحات) */}
       <div className="overflow-auto rounded border border-zinc-300 dark:border-zinc-700">
         <table className="w-full text-sm">
           <thead className="bg-zinc-100 dark:bg-zinc-800">
             <tr>
               <th className="px-3 py-2 text-left">{t('Title', 'Tytuł')}</th>
               <th className="px-3 py-2">{t('Page', 'Strona')}</th>
-              <th className="px-3 py-2">{t('Status', 'Status')}</th>
               <th className="px-3 py-2">{t('Actions', 'Akcje')}</th>
             </tr>
           </thead>
@@ -216,17 +159,6 @@ export default function AdminArticlesClient({
               >
                 <td className="px-3 py-2">{r.title}</td>
                 <td className="px-3 py-2 text-center uppercase">{r.page}</td>
-                <td className="px-3 py-2 text-center">
-                  <span
-                    className={`px-2 py-1 rounded text-xs ${
-                      r.status === 'published'
-                        ? 'bg-green-600 text-white'
-                        : 'bg-yellow-600 text-white'
-                    }`}
-                  >
-                    {r.status}
-                  </span>
-                </td>
                 <td className="px-3 py-2 flex gap-2 justify-center">
                   <a
                     href={`/${locale}/admin/articles/${r.slug}/edit`}
@@ -248,7 +180,7 @@ export default function AdminArticlesClient({
             {initialRows.length === 0 && (
               <tr>
                 <td
-                  colSpan={4}
+                  colSpan={3}
                   className="px-4 py-10 text-center text-zinc-500 text-sm"
                 >
                   {t('No articles', 'Brak artykułów')}
@@ -282,7 +214,7 @@ export default function AdminArticlesClient({
         </div>
       )}
 
-      {/* Scroll to top (optional enhancement) */}
+      {/* Scroll to top */}
       <div className="pt-4">
         <button
           type="button"

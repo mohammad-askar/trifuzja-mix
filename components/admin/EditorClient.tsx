@@ -1,3 +1,4 @@
+// components/admin/EditorClient.tsx
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -10,105 +11,115 @@ import toast from 'react-hot-toast';
 import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import Image from 'next/image';
-import { PAGES, PageKey } from '@/types/constants/pages';
-import type { ArticleDoc, Locale } from '@/types/core/article';
+
+type Locale = 'en' | 'pl';
 
 const TipTapEditor = dynamic(() => import('@/app/components/TipTapEditor'), {
   ssr: false,
 });
 
-/** 1) schema يتضمّن title و excerpt */
+/* ------------------------- Validation Schema ------------------------- */
+/** ملاحظة: حذفنا pageKey و published، وسمحنا بفيديو URL اختياري/فارغ */
 const schema = z.object({
-  title:     z.string().min(3, 'Title too short'),
-  excerpt:   z.string().min(10, 'Excerpt min 10').max(300, 'Max 300 chars'),
-  categoryId:z.string().min(1, 'Select category'),
-  pageKey:   z.enum(PAGES.map(p => p.key) as [PageKey, ...PageKey[]]),
-  videoUrl:  z.string().url('Invalid URL').optional().or(z.literal('')),
-  published: z.boolean(),
+  title: z.string().trim().min(3, 'Title too short'),
+  excerpt: z
+    .string()
+    .trim()
+    .min(10, 'Excerpt min 10')
+    .max(300, 'Max 300 chars'),
+  categoryId: z.string().trim().min(1, 'Select category'),
+  videoUrl: z
+    .string()
+    .trim()
+    .optional()
+    .transform((v) => (v === '' ? undefined : v))
+    .pipe(z.string().url('Invalid URL').optional()),
 });
+
 type FormData = z.infer<typeof schema>;
 
+/* ------------------------------ Types ------------------------------- */
 interface Category {
   _id: string;
   name: Record<Locale, string>;
-  pageKey?: PageKey;
 }
 
+interface UploadResponse {
+  url?: string;
+  error?: string;
+}
+
+/* ----------------------------- Helpers ------------------------------ */
 function stripHtml(html: string): string {
   return html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
+/* ----------------------------- Component ---------------------------- */
 export default function EditorClient({ locale }: { locale: Locale }) {
   const router = useRouter();
 
-  const [content, setContent]         = useState<string>('');
-  const [coverUrl, setCoverUrl]       = useState<string>('');
-  const [uploading, setUploading]     = useState<boolean>(false);
-  const [categories, setCategories]   = useState<Category[]>([]);
+  const [content, setContent] = useState<string>('');
+  const [coverUrl, setCoverUrl] = useState<string>('');
+  const [uploading, setUploading] = useState<boolean>(false);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [loadingCats, setLoadingCats] = useState<boolean>(false);
 
   const {
     register,
     handleSubmit,
-    watch,
-    setValue,
     formState: { errors, isSubmitting },
   } = useForm<FormData>({
     resolver: zodResolver(schema),
-    defaultValues: { pageKey: 'multi', published: false },
   });
 
-  const pageWatch = watch('pageKey');
-
-  /** جلب الفئات عند تغيير الصفحة */
-  const loadCats = useCallback(async (pg: PageKey) => {
+  /* --------------------------- Load categories --------------------------- */
+  const loadCats = useCallback(async () => {
     setLoadingCats(true);
     try {
-      const res = await fetch(`/api/categories?page=${pg}`);
-      if (!res.ok) throw new Error('Categories fetch failed');
-      const data: Category[] = await res.json();
+      const res = await fetch('/api/categories', { cache: 'no-store' });
+      if (!res.ok) throw new Error(await res.text());
+      const data = (await res.json()) as Category[];
       setCategories(data);
-      const cur = watch('categoryId');
-      if (cur && !data.some(c => c._id === cur)) {
-        setValue('categoryId', '');
-      }
-    } catch {
-      toast.error('Categories error');
+    } catch (e) {
+      console.error(e);
+      toast.error(locale === 'pl' ? 'Błąd kategorii' : 'Categories error');
       setCategories([]);
-      setValue('categoryId', '');
     } finally {
       setLoadingCats(false);
     }
-  }, [setValue, watch]);
+  }, [locale]);
 
   useEffect(() => {
-    loadCats(pageWatch);
-  }, [pageWatch, loadCats]);
+    void loadCats();
+  }, [loadCats]);
 
-  /** رفع الصورة */
-  const onDrop = useCallback(async (files: File[]) => {
-    if (!files.length) return;
-    const file = files[0];
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error('Max 5MB');
-      return;
-    }
-    setUploading(true);
-    try {
-      const fd = new FormData();
-      fd.append('file', file);
-      const res = await fetch('/api/upload', { method: 'POST', body: fd });
-      const out = (await res.json()) as { url?: string; error?: string };
-      if (!res.ok) throw new Error(out.error || `Upload failed (${res.status})`);
-      if (!out.url) throw new Error('No URL returned');
-      setCoverUrl(out.url);
-      toast.success('Image uploaded');
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Upload error');
-    } finally {
-      setUploading(false);
-    }
-  }, []);
+  /* ------------------------------ Upload ------------------------------- */
+  const onDrop = useCallback(
+    async (files: File[]) => {
+      if (!files.length) return;
+      const file = files[0];
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error(locale === 'pl' ? 'Maks 5MB' : 'Max 5MB');
+        return;
+      }
+      setUploading(true);
+      try {
+        const fd = new FormData();
+        fd.append('file', file);
+        const res = await fetch('/api/upload', { method: 'POST', body: fd });
+        const out = (await res.json()) as UploadResponse;
+        if (!res.ok) throw new Error(out.error || `Upload failed (${res.status})`);
+        if (!out.url) throw new Error('No URL returned');
+        setCoverUrl(out.url);
+        toast.success(locale === 'pl' ? 'Przesłano obraz' : 'Image uploaded');
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : 'Upload error');
+      } finally {
+        setUploading(false);
+      }
+    },
+    [locale],
+  );
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -119,36 +130,35 @@ export default function EditorClient({ locale }: { locale: Locale }) {
 
   const removeCover = () => setCoverUrl('');
 
-  /** إرسال النموذج */
-  const onSubmit: SubmitHandler<FormData> = async d => {
+  /* ------------------------------ Submit ------------------------------ */
+  /**
+   * ✅ نرسل title/excerpt/content كـ Record {en,pl} بنفس القيمة
+   * علشان الـ API الحالية (POST /api/articles) تتقبّلها،
+   * وكمان المقالات القديمة تبقى متوافقة.
+   */
+  const onSubmit: SubmitHandler<FormData> = async (d) => {
     if (uploading) {
-      toast.error('Wait for image upload...');
+      toast.error(locale === 'pl' ? 'Poczekaj na przesyłanie…' : 'Wait for image upload…');
       return;
     }
     if (!stripHtml(content)) {
-      toast.error('Content is empty');
+      toast.error(locale === 'pl' ? 'Treść jest pusta' : 'Content is empty');
       return;
     }
 
-    const payload: Omit<ArticleDoc, '_id' | 'createdAt' | 'updatedAt'> = {
-      slug:           slugify(d.title, { lower: true, strict: true }),
-      title:          d.title.trim(),            // الآن string عوض Record
-      description:    d.excerpt.trim(),          // excerpt → description
-      contentHtml:    content,
-      locale,
-      pageKey:        d.pageKey,
-      status:         d.published ? 'published' : 'draft',
-      authorId:       '',                        // يُضبط على السيرفر
-      categories:     [],                        // يجري تجاهلها أو إعادة خريطة
-      tags:           [],
-      heroImageUrl:   coverUrl || undefined,
-      thumbnailUrl:   undefined,
-      publishedAt:    d.published ? new Date().toISOString() : undefined,
-      scheduledFor:   undefined,
-      revision:       1,
-      meta:           {},
-      metrics:        {},
-      videoUrl:       d.videoUrl?.trim() || undefined,
+    const titleRec = { en: d.title.trim(), pl: d.title.trim() };
+    const excerptRec = { en: d.excerpt.trim(), pl: d.excerpt.trim() };
+    const contentRec = { en: content, pl: content };
+
+    const payload = {
+      slug: slugify(d.title, { lower: true, strict: true }),
+      title: titleRec,
+      excerpt: excerptRec,
+      content: contentRec,
+      categoryId: d.categoryId,
+      coverUrl: coverUrl || undefined,
+      videoUrl: d.videoUrl,
+      // meta: يمكن تضيف coverPosition لاحقًا لو احتجته
     };
 
     try {
@@ -157,17 +167,19 @@ export default function EditorClient({ locale }: { locale: Locale }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || 'Server error');
-      }
+
+      const errJson = (await res.json().catch(() => ({}))) as { error?: string; slug?: string };
+      if (!res.ok) throw new Error(errJson.error || 'Server error');
+
       toast.success(locale === 'pl' ? '✅ Zapisano!' : '✅ Saved');
-      router.push('/admin/articles');
+      // ارجع لقائمة المقالات مع الـ locale
+      router.push(`/${locale}/admin/articles`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Network error');
     }
   };
 
+  /* --------------------------------- UI -------------------------------- */
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
       {/* العنوان */}
@@ -206,38 +218,28 @@ export default function EditorClient({ locale }: { locale: Locale }) {
           ? 'Kliknij lub upuść zdjęcie'
           : 'Click or drop cover image'}
       </div>
-{coverUrl && (
-  <div className="relative inline-block">
-    <Image
-      src={coverUrl}
-      alt="cover"
-      width={768}                 // اختر قيماً معقولة
-      height={384}
-      className="mt-2 h-48 w-auto rounded shadow object-cover"
-    />
-    <button
-      type="button"
-      onClick={removeCover}
-      className="absolute top-2 right-2 bg-black/60 text-white text-xs px-2 py-1 rounded"
-    >
-      {locale === 'pl' ? 'Usuń' : 'Remove'}
-    </button>
-  </div>
-)}
 
+      {coverUrl && (
+        <div className="relative inline-block">
+          <Image
+            src={coverUrl}
+            alt="cover"
+            width={768}
+            height={384}
+            className="mt-2 h-48 w-auto rounded shadow object-cover"
+          />
+          <button
+            type="button"
+            onClick={removeCover}
+            className="absolute top-2 right-2 bg-black/60 text-white text-xs px-2 py-1 rounded"
+          >
+            {locale === 'pl' ? 'Usuń' : 'Remove'}
+          </button>
+        </div>
+      )}
 
-      {/* الصفحة والفئة */}
-      <div className="grid md:grid-cols-2 gap-4">
-        <select
-          {...register('pageKey')}
-          className="w-full border rounded px-3 py-2 focus:ring focus:ring-blue-200 outline-none"
-        >
-          {PAGES.map(p => (
-            <option key={p.key} value={p.key}>
-              {locale === 'pl' ? p.labelPl : p.labelEn}
-            </option>
-          ))}
-        </select>
+      {/* الفئة */}
+      <div className="grid md:grid-cols-1 gap-4">
         <select
           {...register('categoryId')}
           className="w-full border rounded px-3 py-2 focus:ring focus:ring-blue-200 outline-none"
@@ -251,15 +253,15 @@ export default function EditorClient({ locale }: { locale: Locale }) {
               ? 'Wybierz kategorię'
               : 'Select category'}
           </option>
-          {categories.map(c => (
+          {categories.map((c) => (
             <option key={c._id} value={c._id}>
-              {c.name[locale] ?? c._id.slice(0, 6)}
+              {c.name[locale] ?? c.name.en ?? c._id.slice(0, 6)}
             </option>
           ))}
         </select>
       </div>
 
-      {/* رابط الفيديو */}
+      {/* رابط الفيديو (اختياري) */}
       <input
         {...register('videoUrl')}
         placeholder={locale === 'pl' ? 'Adres wideo (opc.)' : 'Video URL (opt.)'}
@@ -267,25 +269,13 @@ export default function EditorClient({ locale }: { locale: Locale }) {
       />
       {errors.videoUrl && <p className="text-red-500 text-sm">{errors.videoUrl.message}</p>}
 
-      {/* النشر */}
-      <label className="flex items-center gap-2">
-        <input type="checkbox" {...register('published')} />
-        {locale === 'pl' ? 'Opublikowany' : 'Published'}
-      </label>
-
       {/* زر الحفظ */}
       <button
         type="submit"
         disabled={isSubmitting || uploading}
         className="bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-medium px-6 py-2 rounded shadow"
       >
-        {isSubmitting
-          ? locale === 'pl'
-            ? 'Zapisywanie…'
-            : 'Saving…'
-          : locale === 'pl'
-          ? 'Zapisz'
-          : 'Save'}
+        {isSubmitting ? (locale === 'pl' ? 'Zapisywanie…' : 'Saving…') : locale === 'pl' ? 'Zapisz' : 'Save'}
       </button>
     </form>
   );

@@ -1,73 +1,64 @@
+// components/admin/ArticlesFiltersClient.tsx
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 
+type Locale = 'en' | 'pl';
+
 interface Props {
-  locale: 'en' | 'pl';
+  locale: Locale;
   initialSearch: string;
-  initialStatus: string;
-  initialPageKey: string;
-  initialPage: number;
-  initialLimit: number;
 }
 
 export default function ArticlesFiltersClient({
   locale,
   initialSearch,
-  initialStatus,
-  initialPageKey,
 }: Props) {
-  const router = useRouter();
+  const router       = useRouter();
   const searchParams = useSearchParams();
-  const pathname = usePathname();
+  const pathname     = usePathname();
 
-  const [search, setSearch]     = useState(initialSearch);
-  const [status, setStatus]     = useState(initialStatus);
-  const [pageKey, setPageKey]   = useState(initialPageKey);
+  const [search, setSearch] = useState<string>(initialSearch);
 
-  const pushQuery = useCallback(() => {
-    const params = new URLSearchParams(searchParams?.toString() || '');
-    const setOrDelete = (k: string, v: string) => {
-      if (v) params.set(k, v); else params.delete(k);
-    };
+  const pushQuery = useCallback(
+    (sp: URLSearchParams): void => {
+      const params = new URLSearchParams(sp.toString());
 
-    setOrDelete('search', search.trim());
-    setOrDelete('status', status);
-    setOrDelete('pageKey', pageKey);
-    params.set('page','1'); // إعادة أول صفحة عند تغيير الفلاتر
+      // حدّث/احذف search فقط
+      const q = search.trim();
+      if (q) params.set('search', q);
+      else params.delete('search');
 
-    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
-  }, [search, status, pageKey, router, pathname, searchParams]);
+      // أعد الصفحة للأولى عند تغيير البحث
+      params.set('page', '1');
 
+      const next = `${pathname}?${params.toString()}`;
+      const curr = `${pathname}?${sp.toString()}`;
+      if (next !== curr) {
+        router.replace(next, { scroll: false });
+      }
+    },
+    [search, pathname, router],
+  );
+
+  // debounce للبحث
   useEffect(() => {
-    const id = setTimeout(() => pushQuery(), 400);
-    return () => clearTimeout(id);
-  }, [search, pushQuery]);
+    const id = window.setTimeout(() => {
+      const sp = new URLSearchParams(searchParams?.toString() || '');
+      pushQuery(sp);
+    }, 400);
+    return () => window.clearTimeout(id);
+  }, [search, searchParams, pushQuery]);
 
-  useEffect(() => {
-    pushQuery();
-  }, [status, pageKey, pushQuery]);
-
-  function resetAll() {
+  function resetAll(): void {
     setSearch('');
-    setStatus('');
-    setPageKey('');
-    router.replace(pathname, { scroll: false });
+    // إزالة كل فلاتر البحث (ونترك الباقي كما هو)
+    const sp = new URLSearchParams(searchParams?.toString() || '');
+    sp.delete('search');
+    sp.set('page', '1');
+    router.replace(`${pathname}?${sp.toString()}`, { scroll: false });
   }
-
-  const pageOptions = [
-    { key: '', label: locale === 'pl' ? 'Wszystko' : 'All' },
-    { key: 'multi', label: 'multi' },
-    { key: 'terra', label: 'terra' },
-    { key: 'daily', label: 'daily' },
-  ];
-
-  const statusOptions = [
-    { key: '', label: locale === 'pl' ? 'Wszystko' : 'All' },
-    { key: 'draft', label: locale === 'pl' ? 'Szkic' : 'Draft' },
-    { key: 'published', label: locale === 'pl' ? 'Opublik.' : 'Published' },
-  ];
 
   return (
     <div className="flex flex-col gap-4 md:flex-row md:items-end md:gap-6">
@@ -77,51 +68,20 @@ export default function ArticlesFiltersClient({
         </label>
         <input
           value={search}
-          onChange={e => setSearch(e.target.value)}
+          onChange={(e) => setSearch(e.target.value)}
           placeholder={locale === 'pl' ? 'Tytuł lub slug…' : 'Title or slug…'}
-          className="w-full rounded-md border px-3 py-2 text-sm bg-white dark:bg-zinc-900"
+          className="w-full rounded-md border px-3 py-2 text-sm bg-white dark:bg-zinc-900
+                     focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
-      </div>
-
-      <div>
-        <label className="block text-xs font-semibold mb-1">
-          {locale === 'pl' ? 'Strona' : 'Page'}
-        </label>
-        <select
-          value={pageKey}
-          onChange={e => setPageKey(e.target.value)}
-          className="rounded-md border px-3 py-2 text-sm bg-white dark:bg-zinc-900"
-        >
-          {pageOptions.map(p => (
-            <option key={p.key} value={p.key}>
-              {p.label}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <div>
-        <label className="block text-xs font-semibold mb-1">
-          {locale === 'pl' ? 'Status' : 'Status'}
-        </label>
-        <select
-          value={status}
-          onChange={e => setStatus(e.target.value)}
-          className="rounded-md border px-3 py-2 text-sm bg-white dark:bg-zinc-900"
-        >
-          {statusOptions.map(s => (
-            <option key={s.key} value={s.key}>
-              {s.label}
-            </option>
-          ))}
-        </select>
       </div>
 
       <div className="flex gap-3">
         <button
           type="button"
           onClick={resetAll}
-          className="h-10 px-4 rounded-md border text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800"
+          className="h-10 px-4 rounded-md border text-sm
+                     hover:bg-zinc-100 dark:hover:bg-zinc-800
+                     focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           {locale === 'pl' ? 'Reset' : 'Reset'}
         </button>

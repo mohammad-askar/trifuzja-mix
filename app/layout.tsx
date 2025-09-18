@@ -1,4 +1,4 @@
-//E:\trifuzja-mix\app\layout.tsx
+// app/[locale]/layout.tsx
 import './globals.css';
 import { Geist, Geist_Mono } from 'next/font/google';
 import type { ReactNode } from 'react';
@@ -10,27 +10,54 @@ import Providers from './providers';
 const geistSans = Geist({ variable: '--font-geist-sans', subsets: ['latin'] });
 const geistMono = Geist_Mono({ variable: '--font-geist-mono', subsets: ['latin'] });
 
-export const metadata: Metadata = {
-  title: 'Initiativa Autonoma',
-  description: 'Read articles in English and Polish',
-  icons: {
-    icon: [
-      { url: '/favicon.ico', sizes: 'any' },
-      { url: '/favicon-32x32.png', type: 'image/png', sizes: '32x32' },
-      { url: '/favicon-16x16.png', type: 'image/png', sizes: '16x16' },
-      { url: '/icon-192.png', sizes: '192x192', type: 'image/png' }, 
-      { url: '/icon-512.png', sizes: '512x512c:\Users\mizoo\Downloads\icon-192.png', type: 'image/png' }, 
-    ],
-    apple: [{ url: '/apple-touch-icon.png', sizes: '180x180' }],
-  },
-  manifest: '/site.webmanifest',
-};
+type Locale = 'en' | 'pl';
 
-export default async function RootLayout({ children }: { children: ReactNode }) {
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: Locale }>;
+}): Promise<Metadata> {
+  const { locale } = await params;
+  const isPL = locale === 'pl';
+
+  return {
+    title: isPL ? 'Initiativa Autonoma' : 'Initiativa Autonoma',
+    description: isPL
+      ? 'Czytaj artykuły po polsku (i archiwalne po angielsku).'
+      : 'Read articles in Polish (and legacy English).',
+    // لغات بديلة (يساعد محركات البحث)
+    alternates: {
+      languages: {
+        en: '/en',
+        pl: '/pl',
+      },
+    },
+    icons: {
+      icon: [
+        { url: '/favicon.ico', sizes: 'any' },
+        { url: '/favicon-32x32.png', type: 'image/png', sizes: '32x32' },
+        { url: '/favicon-16x16.png', type: 'image/png', sizes: '16x16' },
+        { url: '/icon-192.png', sizes: '192x192', type: 'image/png' },
+        { url: '/icon-512.png', sizes: '512x512', type: 'image/png' }, // ✅ صحيح
+      ],
+      apple: [{ url: '/apple-touch-icon.png', sizes: '180x180' }],
+    },
+    manifest: '/site.webmanifest',
+  };
+}
+
+export default async function LocaleLayout({
+  children,
+  params,
+}: {
+  children: ReactNode;
+  params: Promise<{ locale: Locale }>;
+}) {
+  const { locale } = await params;
   const session = await getServerSession(authOptions);
 
   return (
-    <html lang="en">
+    <html lang={locale} suppressHydrationWarning>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <Providers session={session}>
           {children}

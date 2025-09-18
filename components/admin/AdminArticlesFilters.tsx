@@ -28,19 +28,23 @@ const DICT = {
 
 /* ---------- Component ---------- */
 export default function AdminArticlesFilters({ locale, query }: Props) {
-  const t           = DICT[locale];
+  const t = DICT[locale];
   const updateQuery = useUpdateQuery();
 
-  /* فقط البحث ---------------------------------------------------------- */
+  // فقط البحث
   const [search, setSearch] = useState(query.search ?? '');
-
-  // debounce للبحث
   const deferredSearch = useDeferredValue(search);
+
+  // عند تغيّر البحث المؤجَّل، حدّث query (وأفترض أن useUpdateQuery تُرجع page=1)
   useEffect(() => {
+    // لو القيمة المؤجلة هي نفسها الموجودة في البداية، لا تحدث أي شيء
+    if ((query.search ?? '') === (deferredSearch ?? '')) return;
+
     updateQuery({ search: deferredSearch || undefined });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deferredSearch, updateQuery]);
 
-  /* reset -------------------------------------------------------------- */
+  // reset: امسح البحث وارجع للـ query النظيفة
   const reset = useCallback(() => {
     setSearch('');
     updateQuery({ search: undefined });
@@ -60,8 +64,10 @@ export default function AdminArticlesFilters({ locale, query }: Props) {
       <button
         type="button"
         onClick={reset}
+        disabled={search.length === 0}
         className="h-10 px-4 rounded-md border text-sm
                    hover:bg-zinc-100 dark:hover:bg-zinc-800
+                   disabled:opacity-50
                    focus:outline-none focus:ring-2 focus:ring-blue-500"
       >
         {t.reset}
@@ -88,6 +94,7 @@ function TextInput({
       </label>
       <input
         id={id}
+        aria-label={label}
         value={value}
         placeholder={placeholder}
         onChange={e => onChange(e.target.value)}

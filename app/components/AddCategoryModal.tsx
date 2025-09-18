@@ -1,12 +1,13 @@
+// app/components/AddCategoryModal.tsx
 'use client';
 
-import { Fragment, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import {
   Dialog,
   DialogPanel,
   DialogTitle,
   Transition,
-  TransitionChild,    // ✅ المكوّن الجديد
+  TransitionChild,
 } from '@headlessui/react';
 import { Plus, Loader2 } from 'lucide-react';
 import { useForm } from 'react-hook-form';
@@ -14,22 +15,22 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import toast from 'react-hot-toast';
 
-/* ---------- Types ---------- */
+/* ---------- Types (اسم واحد بلا لغات) ---------- */
 export type Locale = 'en' | 'pl';
+
 export type Category = {
   _id: string;
-  name: { en: string; pl: string };
+  name: string;          // ← اسم واحد فقط
   slug: string;
   createdAt: string;
   updatedAt: string;
 };
 
-/* ---------- Translations ---------- */
+/* ---------- i18n للنصوص الظاهرة فقط ---------- */
 const TR: Record<Locale, Record<string, string>> = {
   en: {
     add: 'Add Category',
-    nameEn: 'Name (EN)',
-    namePl: 'Name (PL)',
+    name: 'Name',
     slug: 'Slug',
     save: 'Save',
     saved: 'Category added',
@@ -37,8 +38,7 @@ const TR: Record<Locale, Record<string, string>> = {
   },
   pl: {
     add: 'Dodaj kategorię',
-    nameEn: 'Nazwa (EN)',
-    namePl: 'Nazwa (PL)',
+    name: 'Nazwa',
     slug: 'Slug',
     save: 'Zapisz',
     saved: 'Dodano kategorię',
@@ -46,11 +46,10 @@ const TR: Record<Locale, Record<string, string>> = {
   },
 };
 
-/* ---------- Validation ---------- */
+/* ---------- التحقق ---------- */
 const schema = z.object({
-  en: z.string().min(2),
-  pl: z.string().min(2),
-  slug: z.string().min(2).regex(/^[a-z0-9-]+$/),
+  name: z.string().trim().min(2, 'Min 2 characters'),
+  slug: z.string().trim().min(2, 'Min 2 characters').regex(/^[a-z0-9-]+$/, 'Use a-z, 0-9, -'),
 });
 type FormData = z.infer<typeof schema>;
 
@@ -72,65 +71,87 @@ export default function AddCategoryModal({ locale, onCreated }: Props) {
     watch,
     setValue,
     formState: { errors },
-  } = useForm<FormData>({ resolver: zodResolver(schema) });
+  } = useForm<FormData>({
+    resolver: zodResolver(schema),
+    defaultValues: { name: '', slug: '' },
+  });
 
-  /* auto-slug */
-  const enName = watch('en');
-  const autoSlug =
-    enName
-      ?.toLowerCase()
-      .trim()
-      .replace(/\s+/g, '-')
-      .replace(/[^a-z0-9-]/g, '') || '';
-  if (enName && !watch('slug')) setValue('slug', autoSlug);
+  // توليد slug تلقائي حتى يقرر المستخدم التعديل اليدوي
+  const nameVal = watch('name');
+  const slugVal = watch('slug');
+  const [slugTouched, setSlugTouched] = useState(false);
 
-const submit = async (data: FormData) => {
-  setSaving(true);
+  const autoSlug = useMemo(
+    () =>
+      (nameVal ?? '')
+        .toLowerCase()
+        .trim()
+        .replace(/\s+/g, '-')
+        .replace(/[^a-z0-9-]/g, ''),
+    [nameVal],
+  );
 
-  try {
-    const res = await fetch('/api/categories', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: { en: data.en, pl: data.pl },
-        slug: data.slug,
-      }),
-    });
-
-    // نحصل دائمًا على JSON سواء نجح الطلب أو فشل
-    const json = await res.json().catch(() => ({}));
-
-    if (!res.ok) {
-      /* الخادم أعاد رسالة خطأ واضحة */
-      throw new Error(json.error ?? 'Unknown server error');
+  useEffect(() => {
+    // حدّث slug تلقائيًا فقط لو المستخدم لم يلمس حقل slug أو الحقل فارغ
+    if (!slugTouched || !slugVal) {
+      setValue('slug', autoSlug, { shouldValidate: true });
     }
+  }, [autoSlug, slugTouched, slugVal, setValue]);
 
-    /* نجح الإدخال ويحتوي json على الكائن الكامل */
-    toast.success(t.saved);                // ✅ إشعار أخضر
-    onCreated(json as Category);           // إضافة مباشرةً للجدول
-    setOpen(false);
-  } catch (err: unknown) {
-  const message =
-    err instanceof Error ? err.message : String(err);
+  const onSlugChange: React.ChangeEventHandler<HTMLInputElement> = (e) => {
+    setSlugTouched(true);
+    // نسمح بأي كتابة ولكن نطبّق نفس قواعد التنظيف البسيطة
+    const cleaned = e.target.value
+      .toLowerCase()
+      .replace(/\s+/g, '-')
+      .replace(/[^a-z0-9-]/g, '');
+    setValue('slug', cleaned, { shouldValidate: true });
+  };
 
-  toast.error(`${t.err}: ${message}`); // ❌ إشعار أحمر
-} finally {
-    setSaving(false);
-  }
-};
+  const submit = async (data: FormData) => {
+    setSaving(true);
+    try {
+      const res = await fetch('/api/admin/categories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        // API الإدارة تقبل name فقط — هي من تتولى إنشاء الـ slug إن لم تُرسله.
+        body: JSON.stringify({ name: data.name, slug: data.slug }),
+      });
 
+      const json = (await res.json().catch(() => ({}))) as
+        | Category
+        | { error?: string };
+
+      if (!res.ok) {
+        throw new Error((json as { error?: string }).error ?? 'Unknown server error');
+      }
+
+      toast.success(t.saved);
+      onCreated(json as Category);
+      setOpen(false);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      toast.error(`${t.err}: ${message}`);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <>
-      {/* trigger */}
+      {/* زر الفتح */}
       <button
-        onClick={() => setOpen(true)}
+        onClick={() => {
+          setOpen(true);
+          // إعادة الضبط عند الفتح
+          setSlugTouched(false);
+        }}
         className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md"
       >
         <Plus className="w-4 h-4" /> {t.add}
       </button>
 
-      {/* modal */}
+      {/* المودال */}
       <Transition show={open} as={Fragment}>
         <Dialog onClose={() => setOpen(false)} className="fixed inset-0 z-50">
           <div className="min-h-screen flex items-center justify-center p-4 bg-black/50">
@@ -149,42 +170,39 @@ const submit = async (data: FormData) => {
                 </DialogTitle>
 
                 <form onSubmit={handleSubmit(submit)} className="space-y-4">
+                  {/* Name (واحد فقط) */}
                   <div>
                     <input
-                      placeholder={t.nameEn}
-                      {...register('en')}
+                      placeholder={t.name}
+                      {...register('name')}
                       className="w-full px-3 py-2 bg-zinc-800 border border-zinc-600 rounded-md"
                     />
-                    {errors.en && (
-                      <p className="text-red-500 text-xs mt-1">{errors.en.message}</p>
+                    {errors.name && (
+                      <p className="text-red-500 text-xs mt-1">
+                        {errors.name.message}
+                      </p>
                     )}
                   </div>
 
-                  <div>
-                    <input
-                      placeholder={t.namePl}
-                      {...register('pl')}
-                      className="w-full px-3 py-2 bg-zinc-800 border border-zinc-600 rounded-md"
-                    />
-                    {errors.pl && (
-                      <p className="text-red-500 text-xs mt-1">{errors.pl.message}</p>
-                    )}
-                  </div>
-
+                  {/* Slug */}
                   <div>
                     <input
                       placeholder={t.slug}
-                      {...register('slug')}
+                      value={slugVal}
+                      onChange={onSlugChange}
+                      onFocus={() => setSlugTouched(true)}
                       className="w-full px-3 py-2 bg-zinc-800 border border-zinc-600 rounded-md"
                     />
                     {errors.slug && (
-                      <p className="text-red-500 text-xs mt-1">{errors.slug.message}</p>
+                      <p className="text-red-500 text-xs mt-1">
+                        {errors.slug.message}
+                      </p>
                     )}
                   </div>
 
                   <button
                     disabled={saving}
-                    className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 py-2 rounded-md"
+                    className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 py-2 rounded-md disabled:opacity-60"
                   >
                     {saving && <Loader2 className="w-4 h-4 animate-spin" />}
                     {t.save}

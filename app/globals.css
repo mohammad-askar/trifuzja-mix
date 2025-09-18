@@ -84,3 +84,26 @@ body {
 
 /* keep your existing left/right/center rules and the clearfix: */
 .prose::after { content:""; display:table; clear:both; }
+/* إظهار الفقرات الفارغة كسطر مرئي */
+.prose p:empty::before {
+  content: "\00a0"; /* NBSP */
+  display: block;
+}
+.tiptap p,
+.tiptap h1,
+.tiptap h2,
+.tiptap h3 { white-space: pre-wrap; }
+/* لا تسمح أبداً بإزاحة البلوك للفقرات داخل المحرّر */
+.tiptap p[data-indent] {
+  margin-left: 0 !important;
+  padding-left: 0 !important;
+}
+
+/* العناوين فقط هي اللي نسمح لها بإزاحة بلوكية (لو تحتاجها) */
+.tiptap h1[data-indent],
+.tiptap h2[data-indent],
+.tiptap h3[data-indent] {
+  text-indent: 0 !important;
+  /* margin-left تأتي من الامتداد نفسه */
+}
+
