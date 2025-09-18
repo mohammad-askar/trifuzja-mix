@@ -1,3 +1,4 @@
+//E:\trifuzja-mix\app\components\ArticleEditor.tsx
 'use client';
 
 import React, {
@@ -34,7 +35,7 @@ const T = {
     title: 'Title', excerpt: 'Summary', slug: 'Slug', cat: 'Category', cover: 'Cover',
     save: 'Save', create: 'Create',
     imgDrag: 'Click or drag', imgDrop: 'Drop here',
-    words: 'words', addMore: 'Add ≥20 words', unsaved: 'Unsaved',
+    words: 'words', unsaved: 'Unsaved',
     uploadOk: 'Image uploaded', loading: 'Loading…', saving: 'Saving…',
     savedAt: (t: string) => `Saved ${t}`, slugOk: '✓ slug available', slugInUse: 'Slug in use',
     readTime: 'min read', pressToSave: 'Press Ctrl/Cmd + S to save',
@@ -43,12 +44,13 @@ const T = {
     title: 'Tytuł', excerpt: 'Opis', slug: 'Slug', cat: 'Kategoria', cover: 'Grafika',
     save: 'Zapisz', create: 'Utwórz',
     imgDrag: 'Kliknij lub przeciągnij', imgDrop: 'Upuść tutaj',
-    words: 'słów', addMore: 'Dodaj ≥20 słów', unsaved: 'Niezapisane',
+    words: 'słów', unsaved: 'Niezapisane',
     uploadOk: 'Załadowano obraz', loading: 'Ładowanie…', saving: 'Zapisywanie…',
     savedAt: (t: string) => `Zapisano o ${t}`, slugOk: '✓ slug dostępny', slugInUse: 'Slug zajęty',
     readTime: 'min czytania', pressToSave: 'Wciśnij Ctrl/Cmd + S aby zapisać',
   },
 } as const;
+
 
 /* ------------------------------ Form Schema --------------------------- */
 // ✅ بدون page وبدون status
@@ -68,7 +70,6 @@ const readingTimeFromHtml = (html: string, unit: string) => {
   return `${minutes} ${unit}`;
 };
 const lenGT3 = (s: string) => s.trim().length > 3;
-const htmlTextLenGT3 = (html: string) => html.replace(/<[^>]+>/g, ' ').trim().length > 3;
 
 /* ------------------------------ Hooks --------------------------------- */
 export function useDebouncedCallback<A extends unknown[]>(
@@ -188,7 +189,6 @@ export default function ArticleEditor({
     (async () => {
       setLoadingCats(true);
       try {
-        // إن كان endpoint لديك يتطلب page، استبدل السطر التالي بـ /api/categories?page=multi
         const r = await fetch(`/api/categories`);
         const data: Category[] = await r.json();
         if (mounted) setCats(data);
@@ -208,8 +208,15 @@ export default function ArticleEditor({
     [content],
   );
   const reading = readingTimeFromHtml(content, text.readTime);
-  const ready = lenGT3(titleVal) && lenGT3(excerptVal) && htmlTextLenGT3(content) && lenGT3(categoryId);
-  const canSubmit = ready && !isSubmitting && (isEdit || slugAvailable !== false);
+
+  // ✅ تمكين الإنشاء والحفظ التلقائي بمجرد اكتمال الأساسيات (بدون إلزام محتوى)
+  const basicsReady =
+    lenGT3(titleVal) && lenGT3(excerptVal) && lenGT3(categoryId);
+
+  const ready = basicsReady;
+
+  const canSubmit =
+    basicsReady && !isSubmitting && (isEdit || slugAvailable !== false);
 
   const checkSlugAvailability = useCallback(async (slug: string) => {
     if (!slug || slug.length < 3) return setSlugAvailable(null);
@@ -234,28 +241,27 @@ export default function ArticleEditor({
     window.addEventListener('beforeunload', handler);
     return () => window.removeEventListener('beforeunload', handler);
   }, [dirty]);
-// سحب/تحريك نقطة التركيز
-const handleFocalPointMove = useCallback((clientX: number, clientY: number) => {
-  if (!coverContainerRef.current) return;
-  const rect = coverContainerRef.current.getBoundingClientRect();
-  const x = Math.max(0, Math.min(100, ((clientX - rect.left) / rect.width) * 100));
-  const y = Math.max(0, Math.min(100, ((clientY - rect.top) / rect.height) * 100));
-  setCoverPosition({ x, y });
-}, []);
+
+  // سحب/تحريك نقطة التركيز
+  const handleFocalPointMove = useCallback((clientX: number, clientY: number) => {
+    if (!coverContainerRef.current) return;
+    const rect = coverContainerRef.current.getBoundingClientRect();
+    const x = Math.max(0, Math.min(100, ((clientX - rect.left) / rect.width) * 100));
+    const y = Math.max(0, Math.min(100, ((clientY - rect.top) / rect.height) * 100));
+    setCoverPosition({ x, y });
+  }, []);
 
   const handleMouseMove = useCallback((e: MouseEvent) => {
     if (isDraggingRef.current) handleFocalPointMove(e.clientX, e.clientY);
   }, [handleFocalPointMove]);
 
-const handleTouchMove = useCallback((e: TouchEvent) => {
-  if (isDraggingRef.current && e.touches[0]) {
-    handleFocalPointMove(e.touches[0].clientX, e.touches[0].clientY);
-  }
-}, [handleFocalPointMove]);
+  const handleTouchMove = useCallback((e: TouchEvent) => {
+    if (isDraggingRef.current && e.touches[0]) {
+      handleFocalPointMove(e.touches[0].clientX, e.touches[0].clientY);
+    }
+  }, [handleFocalPointMove]);
 
-
-
-  // ✅ Autosave بدون status/page
+  // ✅ Autosave بدون status/page — يعتمد الآن على basicsReady
   const autosave = useCallback(async () => {
     if (!ready || (!isEdit && slugAvailable === false)) return;
     const payload = {
@@ -296,35 +302,34 @@ const handleTouchMove = useCallback((e: TouchEvent) => {
   };
 
   const handleMouseUp = useCallback(() => {
-  isDraggingRef.current = false;
-  window.removeEventListener('mousemove', handleMouseMove);
-  window.removeEventListener('mouseup', handleMouseUp);
-  window.removeEventListener('touchmove', handleTouchMove);
-  window.removeEventListener('touchend', handleMouseUp);
-}, [handleMouseMove, handleTouchMove]);
-
-
-const handleMouseDown = useCallback(
-  (e: ReactMouseEvent<HTMLDivElement> | React.TouchEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    isDraggingRef.current = true;
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
-    window.addEventListener('touchmove', handleTouchMove, { passive: false });
-    window.addEventListener('touchend', handleMouseUp);
-  },
-  [handleMouseMove, handleMouseUp, handleTouchMove],
-);
-
-// تنظيف المستمعين عند تفكيك المكوّن
-useEffect(() => {
-  return () => {
+    isDraggingRef.current = false;
     window.removeEventListener('mousemove', handleMouseMove);
     window.removeEventListener('mouseup', handleMouseUp);
     window.removeEventListener('touchmove', handleTouchMove);
     window.removeEventListener('touchend', handleMouseUp);
-  };
-}, [handleMouseMove, handleMouseUp, handleTouchMove]);
+  }, [handleMouseMove, handleTouchMove]);
+
+  const handleMouseDown = useCallback(
+    (e: ReactMouseEvent<HTMLDivElement> | React.TouchEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      isDraggingRef.current = true;
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+      window.addEventListener('touchmove', handleTouchMove, { passive: false });
+      window.addEventListener('touchend', handleMouseUp);
+    },
+    [handleMouseMove, handleMouseUp, handleTouchMove],
+  );
+
+  // تنظيف المستمعين عند تفكيك المكوّن
+  useEffect(() => {
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('touchmove', handleTouchMove);
+      window.removeEventListener('touchend', handleMouseUp);
+    };
+  }, [handleMouseMove, handleMouseUp, handleTouchMove]);
 
   const onSubmit = async (fv: FormValues) => {
     if (!isEdit && slugAvailable === false) { toast.error(text.slugInUse); return; }
@@ -423,7 +428,7 @@ useEffect(() => {
           <span>
             {words} {text.words} • {reading}
           </span>
-          {words < 20 && <span className="text-orange-600 font-semibold">{text.addMore}</span>}
+          {/* تمت إزالة تنبيه Add ≥20 words بالكامل */}
         </div>
       </div>
 
@@ -488,7 +493,7 @@ useEffect(() => {
         )}
       </div>
 
-      {/* Action Bar — بدون مؤشرات الحالة/الأزرار الإضافية */}
+      {/* Action Bar */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-t pt-3 mt-2 text-xs text-gray-600 dark:text-gray-400">
         <div className="flex items-center gap-3">
           {saving && <span>{text.saving}</span>}

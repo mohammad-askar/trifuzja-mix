@@ -1,4 +1,4 @@
-//E:\trifuzja-mix\app\components\EditorMenuBar.tsx
+// 📁 app/components/EditorMenuBar.tsx
 'use client';
 import { Editor } from '@tiptap/react';
 
@@ -22,7 +22,7 @@ export default function EditorMenuBar({
 }: EditorMenuBarProps) {
   if (!editor) return null;
 
-  const run = (fn: () => boolean) => {
+  const run = (fn: () => void) => {
     editor.chain().focus();
     fn();
   };
@@ -59,6 +59,7 @@ export default function EditorMenuBar({
   const Divider = () => <span className="w-px h-6 bg-zinc-700 mx-1" />;
 
   const isInLink = editor.isActive('link');
+  const isImageSelected = editor.isActive('image');
 
   /* ---------- Helpers ---------- */
   const currentFontSize =
@@ -67,16 +68,24 @@ export default function EditorMenuBar({
     (editor.getAttributes('textStyle')?.color as string | undefined) || '';
 
   const applyFontSize = (size: string) => {
-    if (size === 'unset') run(() => editor.commands.unsetFontSize());
-    else run(() => editor.commands.setFontSize(size));
+    if (size === 'unset') run(() => { editor.commands.unsetFontSize(); });
+    else run(() => { editor.commands.setFontSize(size); });
   };
 
   const applyColor = (color: string) => {
     if (color === 'unset') {
-      run(() => editor.chain().setColor('').removeEmptyTextStyle().run());
+      run(() => { editor.chain().setColor('').removeEmptyTextStyle().run(); });
     } else {
-      run(() => editor.chain().setColor(color).run());
+      run(() => { editor.chain().setColor(color).run(); });
     }
+  };
+
+  const canUndo = editor.can().undo();
+  const canRedo = editor.can().redo();
+
+  // محاذاة صورة (يعمل فقط عند تحديد صورة)
+  const setImageAlign = (align: 'left' | 'center' | 'right') => {
+    run(() => { editor.chain().updateAttributes('image', { align }).run(); });
   };
 
   return (
@@ -85,19 +94,19 @@ export default function EditorMenuBar({
       <Btn
         label="H1"
         active={editor.isActive('heading', { level: 1 })}
-        onClick={() => run(() => editor.chain().focus().toggleHeading({ level: 1 }).run())}
+        onClick={() => run(() => { editor.chain().toggleHeading({ level: 1 }).run(); })}
         title="Heading 1"
       />
       <Btn
         label="H2"
         active={editor.isActive('heading', { level: 2 })}
-        onClick={() => run(() => editor.chain().focus().toggleHeading({ level: 2 }).run())}
+        onClick={() => run(() => { editor.chain().toggleHeading({ level: 2 }).run(); })}
         title="Heading 2"
       />
       <Btn
         label="H3"
         active={editor.isActive('heading', { level: 3 })}
-        onClick={() => run(() => editor.chain().focus().toggleHeading({ level: 3 }).run())}
+        onClick={() => run(() => { editor.chain().toggleHeading({ level: 3 }).run(); })}
         title="Heading 3"
       />
       <Divider />
@@ -106,19 +115,19 @@ export default function EditorMenuBar({
       <Btn
         label="B"
         active={editor.isActive('bold')}
-        onClick={() => run(() => editor.chain().focus().toggleBold().run())}
+        onClick={() => run(() => { editor.chain().toggleBold().run(); })}
         title="Bold"
       />
       <Btn
         label="I"
         active={editor.isActive('italic')}
-        onClick={() => run(() => editor.chain().focus().toggleItalic().run())}
+        onClick={() => run(() => { editor.chain().toggleItalic().run(); })}
         title="Italic"
       />
       <Btn
         label="U"
         active={editor.isActive('underline')}
-        onClick={() => run(() => editor.chain().focus().toggleUnderline().run())}
+        onClick={() => run(() => { editor.chain().toggleUnderline().run(); })}
         title="Underline"
       />
       <Divider />
@@ -127,13 +136,13 @@ export default function EditorMenuBar({
       <Btn
         label="•"
         active={editor.isActive('bulletList')}
-        onClick={() => run(() => editor.chain().focus().toggleBulletList().run())}
+        onClick={() => run(() => { editor.chain().toggleBulletList().run(); })}
         title="Bullet List"
       />
       <Btn
         label="1."
         active={editor.isActive('orderedList')}
-        onClick={() => run(() => editor.chain().focus().toggleOrderedList().run())}
+        onClick={() => run(() => { editor.chain().toggleOrderedList().run(); })}
         title="Numbered List"
       />
       <Divider />
@@ -146,6 +155,32 @@ export default function EditorMenuBar({
         title="Insert Image"
       />
 
+      {/* أدوات الصورة (تظهر فقط عند تحديد صورة) */}
+      {isImageSelected && (
+        <div className="flex items-center gap-1">
+          <Btn
+            label="L"
+            title="Align image left"
+            onClick={() => setImageAlign('left')}
+            active={editor.getAttributes('image')?.align === 'left'}
+          />
+          <Btn
+            label="C"
+            title="Align image center"
+            onClick={() => setImageAlign('center')}
+            active={editor.getAttributes('image')?.align === 'center'}
+          />
+          <Btn
+            label="R"
+            title="Align image right"
+            onClick={() => setImageAlign('right')}
+            active={editor.getAttributes('image')?.align === 'right'}
+          />
+        </div>
+      )}
+
+      <Divider />
+
       {/* Link */}
       <Btn
         label="Link"
@@ -153,21 +188,20 @@ export default function EditorMenuBar({
         onClick={() => {
           const url = prompt('Enter URL (https://)');
           if (!url) return;
-          run(() =>
+          run(() => {
             editor
               .chain()
-              .focus()
               .extendMarkRange('link')
               .setLink({ href: url })
-              .run(),
-          );
+              .run();
+          });
         }}
         title="Insert Link"
       />
       {isInLink && (
         <Btn
           label="Unlink"
-          onClick={() => run(() => editor.chain().focus().unsetLink().run())}
+          onClick={() => run(() => { editor.chain().unsetLink().run(); })}
           title="Remove Link"
         />
       )}
@@ -206,7 +240,6 @@ export default function EditorMenuBar({
       </div>
 
       {/* Color swatches (اختياري) */}
-      {/* تستطيع إزالة هذه المجموعة لو تريد بساطة */}
       <div className="flex gap-1">
         {COLORS.slice(0,6).map(c => (
           <button
@@ -214,7 +247,7 @@ export default function EditorMenuBar({
             type="button"
             onClick={() => applyColor(c)}
             title={c}
-            className={`w-4 h-4 rounded border border-zinc-600`}
+            className="w-4 h-4 rounded border border-zinc-600"
             style={{ backgroundColor: c }}
           />
         ))}
@@ -234,12 +267,14 @@ export default function EditorMenuBar({
       <Btn
         label="↶"
         title="Undo"
-        onClick={() => run(() => editor.chain().focus().undo().run())}
+        disabled={!canUndo}
+        onClick={() => run(() => { editor.chain().undo().run(); })}
       />
       <Btn
         label="↷"
         title="Redo"
-        onClick={() => run(() => editor.chain().focus().redo().run())}
+        disabled={!canRedo}
+        onClick={() => run(() => { editor.chain().redo().run(); })}
       />
       <Divider />
 
@@ -248,14 +283,9 @@ export default function EditorMenuBar({
         label="Clear"
         title="Clear formatting"
         onClick={() =>
-          run(() =>
-            editor
-              .chain()
-              .focus()
-              .clearNodes()
-              .unsetAllMarks()
-              .run(),
-          )
+          run(() => {
+            editor.chain().clearNodes().unsetAllMarks().run();
+          })
         }
       />
     </div>

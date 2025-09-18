@@ -138,7 +138,7 @@ export default async function AdminArticlesPage({
       {/* Filters */}
       <AdminArticlesFilters
         locale={locale}
-        query={{ search:q, pageKey:pageKeyParam as PageKey|undefined, status:statusParam as ArticleStatus|undefined }}
+        query={{ search:q }}
       />
 
       {/* Data table */}

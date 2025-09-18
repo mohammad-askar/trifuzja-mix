@@ -78,4 +78,9 @@ body {
 .prose img[data-rounded="1"] { border-radius: .5rem; }
 .prose img[data-shadow="1"]  { box-shadow: 0 6px 30px rgba(0,0,0,.18); }
 
+
+/* inline mode (no float): */
+.prose img[data-align="inline"] { display:inline-block; margin:.25rem .5rem; vertical-align: top; float:none; }
+
+/* keep your existing left/right/center rules and the clearfix: */
 .prose::after { content:""; display:table; clear:both; }

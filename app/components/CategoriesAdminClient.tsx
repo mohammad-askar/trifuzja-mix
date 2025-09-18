@@ -1,10 +1,11 @@
-//E:\trifuzja-mix\app\components\CategoriesAdminClient.tsx
+// app/components/CategoriesAdminClient.tsx
 'use client';
 
 import { useSession } from 'next-auth/react';
-import { useEffect, useState, useCallback } from 'react';
-import { Plus, Loader2, Trash2, X, Edit2, Check, XCircle } from 'lucide-react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
+import { Plus, Loader2, Trash2, XCircle, Edit2, Check } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
+import ConfirmDelete from '@/app/components/ConfirmDelete';
 
 type Locale = 'en' | 'pl';
 
@@ -20,6 +21,8 @@ export default function CategoriesAdminClient({ locale = 'en' }: { locale?: Loca
   const [nameEn, setNameEn] = useState('');
   const [namePl, setNamePl] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // حوار تأكيد الحذف
   const [modalId, setModalId] = useState<string | null>(null);
 
   // حالة التعديل
@@ -28,7 +31,7 @@ export default function CategoriesAdminClient({ locale = 'en' }: { locale?: Loca
   const [editNamePl, setEditNamePl] = useState('');
   const [editLoading, setEditLoading] = useState(false);
 
-  const t = {
+  const t = useMemo(() => ({
     title:        locale === 'pl' ? 'Zarządzaj kategoriami' : 'Manage Categories',
     unauthorized: locale === 'pl' ? 'Brak uprawnień.'       : 'Unauthorized',
     empty:        locale === 'pl' ? 'Brak kategorii.'       : 'No categories.',
@@ -38,6 +41,7 @@ export default function CategoriesAdminClient({ locale = 'en' }: { locale?: Loca
     addOk:        locale === 'pl' ? 'Dodano'                : 'Added',
     delFail:      locale === 'pl' ? 'Błąd usuwania'         : 'Delete failed',
     delOk:        locale === 'pl' ? 'Usunięto'              : 'Deleted',
+    modalTitle:   locale === 'pl' ? 'Potwierdź usunięcie'   : 'Confirm deletion',
     modalQ:       locale === 'pl' ? 'Usunąć kategorię?'     : 'Delete category?',
     yes:          locale === 'pl' ? 'Tak, usuń'             : 'Yes, delete',
     no:           locale === 'pl' ? 'Anuluj'                : 'Cancel',
@@ -46,7 +50,7 @@ export default function CategoriesAdminClient({ locale = 'en' }: { locale?: Loca
     cancel:       locale === 'pl' ? 'Anuluj'                : 'Cancel',
     editFail:     locale === 'pl' ? 'Błąd edycji'           : 'Edit failed',
     editOk:       locale === 'pl' ? 'Zaktualizowano'        : 'Updated',
-  } as const;
+  }), [locale]);
 
   /* ---------- جلب ---------- */
   const loadCats = useCallback(async () => {
@@ -74,8 +78,7 @@ export default function CategoriesAdminClient({ locale = 'en' }: { locale?: Loca
       const res = await fetch('/api/admin/categories', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        // ✅ بدون page
-        body: JSON.stringify({ nameEn, namePl }),
+        body: JSON.stringify({ nameEn, namePl }), // بدون page
       });
       if (!res.ok) throw new Error(await res.text());
 
@@ -91,14 +94,12 @@ export default function CategoriesAdminClient({ locale = 'en' }: { locale?: Loca
     }
   };
 
-  /* ---------- حذف ---------- */
+  /* ---------- حذف (يُستدعى بعد التأكيد) ---------- */
   const deleteCat = async (id: string) => {
-    if (loading) return;
+    if (!id) return;
     setLoading(true);
-
     try {
       const res = await fetch(`/api/admin/categories/${id}`, { method: 'DELETE' });
-
       if (res.status === 204 || res.status === 200) {
         setCats(prev => prev.filter(c => c._id !== id));
         toast.success(t.delOk);
@@ -114,35 +115,30 @@ export default function CategoriesAdminClient({ locale = 'en' }: { locale?: Loca
     }
   };
 
-  /* ---------- بدء التعديل ---------- */
+  /* ---------- التعديل ---------- */
   const startEditing = (cat: Category) => {
     setEditingCatId(cat._id);
     setEditNameEn(cat.name.en ?? '');
     setEditNamePl(cat.name.pl ?? '');
   };
 
-  /* ---------- إلغاء التعديل ---------- */
   const cancelEditing = () => {
     setEditingCatId(null);
     setEditNameEn('');
     setEditNamePl('');
   };
 
-  /* ---------- حفظ التعديل ---------- */
   const saveEdit = async () => {
     if (!editNameEn || !editNamePl) return toast.error(t.needNames);
     if (!editingCatId) return;
 
     setEditLoading(true);
-
     try {
       const res = await fetch(`/api/admin/categories/${editingCatId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        // ✅ بدون page
-        body: JSON.stringify({ nameEn: editNameEn, namePl: editNamePl }),
+        body: JSON.stringify({ nameEn: editNameEn, namePl: editNamePl }), // بدون page
       });
-
       if (!res.ok) throw new Error(await res.text());
 
       const updatedCat: Category = await res.json();
@@ -159,6 +155,8 @@ export default function CategoriesAdminClient({ locale = 'en' }: { locale?: Loca
   if (!session) {
     return <p className="text-center py-20 text-zinc-400">{t.unauthorized}</p>;
   }
+
+  const catToDelete = modalId ? cats.find(c => c._id === modalId) ?? null : null;
 
   return (
     <main className="max-w-5xl mx-auto px-4 pt-12 pb-20">
@@ -248,7 +246,7 @@ export default function CategoriesAdminClient({ locale = 'en' }: { locale?: Loca
                   <button
                     disabled={loading}
                     onClick={() => !loading && setModalId(c._id)}
-                    className="text-red-500 hover:text-red-400 disabled:opacity-40"
+                    className="text-red-700 hover:text-red-400 disabled:opacity-40"
                     aria-label="Delete"
                   >
                     <Trash2 className="w-4 h-4 inline" />
@@ -256,7 +254,7 @@ export default function CategoriesAdminClient({ locale = 'en' }: { locale?: Loca
                   <button
                     disabled={loading || editingCatId !== null}
                     onClick={() => startEditing(c)}
-                    className="text-blue-500 hover:text-blue-400 disabled:opacity-40"
+                    className="text-green-700 hover:text-green-400 disabled:opacity-40"
                     aria-label="Edit"
                   >
                     <Edit2 className="w-4 h-4 inline" />
@@ -276,35 +274,20 @@ export default function CategoriesAdminClient({ locale = 'en' }: { locale?: Loca
         </table>
       </div>
 
-      {/* Modal تأكيد الحذف */}
-      {modalId && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-          <div className="relative bg-white dark:bg-zinc-800 rounded-xl p-6 w-80 text-center space-y-6">
-            <p className="text-lg">{t.modalQ}</p>
-            <div className="flex justify-center gap-4">
-              <button
-                onClick={() => deleteCat(modalId)}
-                className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
-              >
-                {t.yes}
-              </button>
-              <button
-                onClick={() => setModalId(null)}
-                className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
-              >
-                {t.no}
-              </button>
-            </div>
-            <button
-              onClick={() => setModalId(null)}
-              className="absolute top-3 right-3 text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
-              aria-label="Close"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-        </div>
-      )}
+      {/* ConfirmDelete بدلاً من المودال اليدوي */}
+      <ConfirmDelete
+        open={!!modalId}
+        setOpen={(v) => setModalId(v ? modalId : null)}
+        onConfirm={() => modalId && deleteCat(modalId)}
+        title={t.modalTitle}
+        message={
+          catToDelete
+            ? `${t.modalQ}\n${catToDelete.name.en ?? '—'} / ${catToDelete.name.pl ?? '—'}`
+            : t.modalQ
+        }
+        cancelLabel={t.no}
+        deleteLabel={t.yes}
+      />
     </main>
   );
 }

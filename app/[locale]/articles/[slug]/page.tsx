@@ -253,7 +253,11 @@ export default async function ArticlePage(
           )}
 
           {bodySafe ? (
-            <section className="prose-headings:scroll-mt-24" dangerouslySetInnerHTML={{ __html: bodySafe }} />
+            <section
+      className="prose-headings:scroll-mt-24 break-words hyphens-auto"
+      style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
+      dangerouslySetInnerHTML={{ __html: bodySafe }}
+    />
           ) : (
             <p className="mt-8 italic text-center text-gray-500 dark:text-gray-400">No content.</p>
           )}

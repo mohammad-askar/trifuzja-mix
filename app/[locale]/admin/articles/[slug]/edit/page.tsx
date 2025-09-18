@@ -10,6 +10,9 @@ import type {
   PageKey,
   ArticleStatus,
 } from '@/types/core/article';
+import { ArrowLeft, Eye, Trash2, Loader2 } from 'lucide-react';
+import toast from 'react-hot-toast';
+import ConfirmDelete from '@/app/components/ConfirmDelete';
 
 const ArticleEditor = dynamic(
   () => import('@/app/components/ArticleEditor'),
@@ -88,7 +91,7 @@ function normalize(api: ArticleFromApi, loc: Locale): ArticleEditable {
     title: toLocaleRecord(api.title),
     description,
     contentHtml,
-    contentRaw: toLocaleRecord(api.content), // ← سنستعمل هذا في الـEditor
+    contentRaw: toLocaleRecord(api.content),
     locale: loc,
     pageKey,
     status,
@@ -108,12 +111,17 @@ export default function EditArticlePage() {
 
   const slug = params?.slug ?? '';
   const locale: Locale = params?.locale === 'pl' ? 'pl' : 'en';
+  const listUrl = `/${locale}/admin/articles`;
 
   const [state, setState] = useState<FetchState>({
     loading: true,
     error: null,
     article: null,
   });
+
+  // حوار التأكيد (باستخدام ConfirmDelete)
+  const [dlgOpen, setDlgOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const t = (en: string, pl: string) => (locale === 'pl' ? pl : en);
 
@@ -166,15 +174,37 @@ export default function EditArticlePage() {
     load();
   }, [load]);
 
-  function handleSaved() {
-    router.push(`/${locale}/admin/articles`);
+  async function handleDelete() {
+    if (!state.article) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(
+        `/api/admin/articles/${encodeURIComponent(state.article.slug)}`,
+        { method: 'DELETE' },
+      );
+      const json = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      toast.success(t('Article deleted.', 'Usunięto artykuł.'));
+      router.push(listUrl);
+      router.refresh();
+    } catch (e) {
+      toast.error(
+        e instanceof Error ? e.message : t('Delete failed', 'Błąd usuwania'),
+      );
+    } finally {
+      setDeleting(false);
+    }
   }
 
-  // أزرار محسّنة
-  const btnPrimary =
-    'inline-flex items-center gap-2 rounded-xl px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-violet-600 text-white shadow-lg shadow-indigo-600/20 hover:shadow-violet-600/30 hover:scale-[1.01] active:scale-[.99] transition-all';
-  const btnSecondary =
-    'inline-flex items-center gap-2 rounded-xl px-4 py-2 border border-zinc-300/70 dark:border-zinc-700/70 bg-white/70 dark:bg-zinc-900/50 backdrop-blur hover:bg-white dark:hover:bg-zinc-800 text-zinc-800 dark:text-zinc-200 shadow-sm';
+  // أزرار (تصميم مُحسّن ومقروء)
+  const btn = {
+    ghost:
+      'inline-flex items-center gap-2 rounded-lg px-3 py-2 border border-zinc-300/80 dark:border-zinc-700/70 bg-white/80 dark:bg-zinc-900/60 text-zinc-800 dark:text-zinc-100 hover:bg-white dark:hover:bg-zinc-800 transition',
+    danger:
+      'inline-flex items-center gap-2 rounded-lg px-4 py-2 bg-gradient-to-r from-rose-600 to-red-600 text-white shadow-md hover:shadow-lg active:scale-[.99] transition',
+    icon:
+      'inline-flex items-center gap-2 rounded-lg p-2 border border-zinc-300/80 dark:border-zinc-700/70 text-zinc-800 dark:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition',
+  };
 
   if (!slug) {
     return (
@@ -187,9 +217,12 @@ export default function EditArticlePage() {
   if (state.loading) {
     return (
       <main className="max-w-5xl mx-auto px-4 py-12">
-        <h1 className="text-2xl font-bold mb-6">
-          {t('Edit Article', 'Edytuj artykuł')}
-        </h1>
+        <div className="flex items-center gap-3 mb-6">
+          <Loader2 className="w-5 h-5 animate-spin text-zinc-500" />
+          <h1 className="text-2xl font-semibold">
+            {t('Loading article…', 'Ładowanie artykułu…')}
+          </h1>
+        </div>
         <div className="space-y-4 animate-pulse">
           <div className="h-10 bg-zinc-200 dark:bg-zinc-800 rounded" />
           <div className="h-24 bg-zinc-200 dark:bg-zinc-800 rounded" />
@@ -206,7 +239,7 @@ export default function EditArticlePage() {
           {t('Edit Article', 'Edytuj artykuł')}
         </h1>
         <p className="text-red-500 text-sm">{state.error}</p>
-        <button onClick={load} className={btnPrimary}>
+        <button onClick={load} className={btn.ghost}>
           {t('Retry', 'Spróbuj ponownie')}
         </button>
       </main>
@@ -226,50 +259,79 @@ export default function EditArticlePage() {
     );
   }
 
+  const { article } = state;
+
   return (
-    <main className="max-w-5xl mx-auto px-4 py-10 space-y-6">
-      <header className="flex flex-wrap gap-4 justify-between items-center">
-        <h1 className="text-2xl font-bold">
-          {t('Edit Article', 'Edytuj artykuł')} — {state.article.slug}
-        </h1>
-        <div className="flex gap-3">
-          <a href={`/${locale}/admin/articles`} className={btnSecondary}>
-            {t('Back', 'Powrót')}
-          </a>
-          {state.article.status === 'published' && (
-            <a
-              href={`/${locale}/articles/${state.article.slug}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={btnPrimary}
+    <main className="max-w-5xl mx-auto px-4 py-8 space-y-6">
+      {/* شريط علوي بسيط */}
+      <header className="sticky top-16 z-10 -mx-4 px-4 py-3 bg-white/85 dark:bg-zinc-900/85 backdrop-blur border-b border-zinc-200/70 dark:border-zinc-800/60">
+        <div className="max-w-5xl mx-auto flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <button onClick={() => router.push(listUrl)} className={btn.icon} title={t('Back', 'Powrót')}>
+              <ArrowLeft className="w-4 h-4" />
+            </button>
+            <h1 className="text-lg md:text-xl font-semibold">
+              {t('Edit Article', 'Edytuj artykuł')}{' '}
+              <span className="text-zinc-500">— {article.slug}</span>
+            </h1>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {article.status === 'published' && (
+              <a
+                href={`/${locale}/articles/${article.slug}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={btn.ghost}
+              >
+                <Eye className="w-4 h-4" />
+                {t('View', 'Podgląd')}
+              </a>
+            )}
+
+            <button
+              onClick={() => setDlgOpen(true)}
+              className={btn.danger}
             >
-              {t('View', 'Podgląd')}
-            </a>
-          )}
+              <Trash2 className="w-4 h-4" />
+              {t('Delete', 'Usuń')}
+            </button>
+          </div>
         </div>
       </header>
 
+      {/* المحرّر */}
       <ArticleEditor
         mode="edit"
         locale={locale}
         defaultData={{
-          slug: state.article.slug,
+          slug: article.slug,
           title: {
-            en: state.article.title.en ?? '',
-            pl: state.article.title.pl ?? '',
+            en: article.title.en ?? '',
+            pl: article.title.pl ?? '',
           },
           excerpt: {
-            en: state.article.description?.toString() ?? '',
-            pl: state.article.description?.toString() ?? '',
+            en: article.description?.toString() ?? '',
+            pl: article.description?.toString() ?? '',
           },
-          // ✅ هذا يضمن تعبئة النص القديم
-          content: state.article.contentRaw,
-          categoryId: state.article.categories?.[0] || '',
-          coverUrl: state.article.heroImageUrl,
+          content: article.contentRaw,
+          categoryId: article.categories?.[0] || '',
+          coverUrl: article.heroImageUrl,
           videoUrl: undefined,
-          meta: state.article.meta,
+          meta: article.meta,
         }}
-        onSaved={handleSaved}
+        onSaved={() => router.push(listUrl)}
+      />
+
+      {/* ConfirmDelete (HeadlessUI) */}
+      <ConfirmDelete
+        open={dlgOpen}
+        setOpen={setDlgOpen}
+        onConfirm={handleDelete}
+        title={t('Confirm deletion', 'Potwierdź usunięcie')}
+        message={`${t('Are you sure you want to delete this article?', 'Czy na pewno chcesz usunąć ten artykuł?')} (${article.slug})`}
+        cancelLabel={t('Cancel', 'Anuluj')}
+        deleteLabel={deleting ? t('Deleting…', 'Usuwanie…') : t('Delete', 'Usuń')}
       />
     </main>
   );
