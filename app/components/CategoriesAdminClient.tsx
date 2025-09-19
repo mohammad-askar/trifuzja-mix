@@ -236,7 +236,7 @@ export default function CategoriesAdminClient({ locale = 'en' }: { locale?: Loca
 
   /* ----------------------------- UI ----------------------------- */
   return (
-    <main className="max-w-5xl mx-auto px-4 pt-12 pb-20">
+    <main className="max-w-5xl mx-auto px-4 pt-20 pb-20">
       <Toaster position="bottom-left" />
       <h1 className="text-4xl font-bold mb-12 text-center">{tr.title}</h1>
 

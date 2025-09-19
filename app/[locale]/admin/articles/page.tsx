@@ -162,7 +162,7 @@ export default async function AdminArticlesPage({
   const heading = HEADINGS[locale]?.title ?? HEADINGS.en.title;
 
   return (
-    <main className="max-w-7xl mx-auto px-4 pt-12 pb-20 space-y-8">
+    <main className="max-w-7xl mx-auto px-4 pt-20 pb-20 space-y-8">
       {/* العنوان + زر إنشاء */}
       <header className="flex items-center justify-between">
         <h1 className="text-3xl font-bold tracking-tight">{heading}</h1>

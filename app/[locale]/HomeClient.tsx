@@ -199,7 +199,7 @@ export default function HomeClient() {
   return (
     <main className="min-h-screen flex flex-col bg-gray-900 text-white">
       {/* Hero */}
-      <section className="relative text-center bg-gradient-to-br from-gray-900 via-zinc-800 to-gray-900 overflow-hidden">
+      <section className="relative mt-150 text-center bg-gradient-to-br from-gray-900 via-zinc-800 to-gray-900 overflow-hidden">
         <div
           className="absolute inset-0 bg-[url('/images/hero-bg.jpg')] bg-cover bg-center opacity-10"
           aria-hidden="true"
