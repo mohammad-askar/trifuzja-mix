@@ -75,7 +75,7 @@ export default async function ArticlesHub({ params, searchParams }: Props) {
     .sort((a, b) => a.name.localeCompare(b.name, 'pl'));
 
   return (
-    <main className="max-w-6xl mx-auto px-4 pt-10 pb-10">
+    <main className="max-w-6xl mt-3 mx-auto px-4 pt-10 pb-10">
       {/* ✅ مكوّن الشيبس يستقبل الآن name: string (بولندي فقط) */}
       <CategoryChips categories={cats} selected={selectedCat} />
 

@@ -190,7 +190,7 @@ export default async function ArticlePage(
   };
 
   return (
-    <article className="relative max-w-3xl mx-auto px-4 md:px-6 py-4">
+    <article className="relative mt-12 max-w-3xl mx-auto px-4 md:px-6 py-4">
       <div className="absolute inset-0 -z-10 bg-gradient-to-b from-blue-50/60 via-transparent to-transparent dark:from-zinc-800/60" />
       <aside className="hidden md:block md:fixed md:top-28 md:left-[max(12px,calc((100vw-768px)/2-64px))]">
         <ul className="flex md:flex-col gap-2">

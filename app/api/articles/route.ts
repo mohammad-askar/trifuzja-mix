@@ -30,9 +30,10 @@ export interface ArticleDoc {
   categoryId: string;
   coverUrl?: string;
   videoUrl?: string;
-  /** لا نستخدم draft بعد الآن. السجلات الجديدة دائمًا published.
-   * أبقيناه اختياريًا لدعم السجلات القديمة التي قد لا تملك status. */
+  /** لا نستخدم draft بعد الآن: الجديد دائمًا published (القديم قد لا يملك status) */
   status?: 'published';
+  /** يحدّد أن المقال فيديو فقط (لا نص يُعتدّ به) */
+  isVideoOnly?: boolean;
   createdAt: Date;
   updatedAt: Date;
   readingTime?: string;
@@ -46,6 +47,7 @@ export interface ArticleDoc {
 const responseError = (msg: string, status = 400) =>
   NextResponse.json({ error: msg }, { status });
 
+/** URL مطلق http/https أو أي مسار يبدأ بـ / */
 const relativeOrAbsoluteUrl = z
   .string()
   .refine(
@@ -53,9 +55,20 @@ const relativeOrAbsoluteUrl = z
       !v ||
       v.startsWith('http://') ||
       v.startsWith('https://') ||
-      v.startsWith('/uploads/'),
+      v.startsWith('/'),
     'Invalid URL',
   );
+
+/** إزالة وسوم HTML ثم قياس الطول */
+function plainTextLen(html?: string): number {
+  if (!html) return 0;
+  return html.replace(/<[^>]+>/g, ' ').trim().replace(/\s+/g, ' ').length;
+}
+
+/** اعتبر المحتوى فارغًا لو ≤ 20 حرف بعد نزع الوسوم */
+function isEffectivelyEmpty(html?: string): boolean {
+  return plainTextLen(html) <= 20;
+}
 
 /* ------------------------------------------------------------------ */
 /*                               GET (list)                           */
@@ -64,15 +77,22 @@ const relativeOrAbsoluteUrl = z
  * الاستعلامات المدعومة:
  * - ?pageNo=1&limit=9
  * - ?cat=catId  أو ?cat=cat1,cat2  أو تكرار cat عدة مرات
+ * - ?videoOnly=1 أو ?video=1  ← يجلب فقط المقالات من نوع فيديو فقط
  * يرجع فقط المنشور، وكذلك السجلات القديمة التي قد لا تملك status.
  */
 export async function GET(req: NextRequest) {
   try {
+    const TruthyParam = z.union([z.literal('1'), z.literal('true')]);
+
     const SearchSchema = z.object({
       pageNo: z.coerce.number().int().min(1).default(1),
       limit: z.coerce.number().int().min(1).max(50).default(9),
+      videoOnly: TruthyParam.optional(),
+      video: TruthyParam.optional(), // alias إضافي
     });
-    const qp = SearchSchema.parse(Object.fromEntries(req.nextUrl.searchParams));
+
+    const rawParams = Object.fromEntries(req.nextUrl.searchParams);
+    const qp = SearchSchema.parse(rawParams);
 
     // (?cat=... — يسمح بعدّة قيَم)
     const catsArray = req.nextUrl.searchParams
@@ -83,10 +103,19 @@ export async function GET(req: NextRequest) {
     const filter: Filter<ArticleDoc> = {
       $or: [{ status: 'published' }, { status: { $exists: false } }],
     };
+
     if (catsArray.length === 1) {
       filter.categoryId = catsArray[0];
     } else if (catsArray.length > 1) {
       filter.categoryId = { $in: catsArray };
+    }
+
+    // فلترة فيديو فقط إن طُلبت
+    const wantVideoOnly = !!(qp.videoOnly || qp.video);
+    if (wantVideoOnly) {
+      filter.isVideoOnly = true;
+      // كتحسّب إضافي: تأكد من وجود videoUrl
+      (filter as Record<string, unknown>).videoUrl = { $exists: true, $ne: '' };
     }
 
     const skip = (qp.pageNo - 1) * qp.limit;
@@ -104,6 +133,7 @@ export async function GET(req: NextRequest) {
           categoryId: 1,
           coverUrl: 1,
           videoUrl: 1,
+          isVideoOnly: 1,
           status: 1,
           createdAt: 1,
           updatedAt: 1,
@@ -126,6 +156,7 @@ export async function GET(req: NextRequest) {
       categoryId: d.categoryId,
       coverUrl: d.coverUrl,
       videoUrl: d.videoUrl,
+      isVideoOnly: d.isVideoOnly === true, // دائمًا boolean
       status: d.status, // ستكون 'published' أو غير موجودة في القديم
       createdAt: d.createdAt,
       updatedAt: d.updatedAt,
@@ -163,6 +194,8 @@ const ArticleSchema = z.object({
   categoryId: z.string().trim().min(1),
   coverUrl: relativeOrAbsoluteUrl.optional(),
   videoUrl: relativeOrAbsoluteUrl.optional(),
+  /** إن أرسلته من الواجهة نعتمده، وإلا نحسبه تلقائيًا (انظر أدناه) */
+  isVideoOnly: z.boolean().optional(),
   meta: z
     .object({
       coverPosition: z
@@ -200,6 +233,14 @@ export async function POST(req: NextRequest) {
     const words = firstContent.replace(/<[^>]+>/g, ' ').trim().split(/\s+/).filter(Boolean).length;
     const minutes = Math.max(1, Math.ceil(words / 200));
 
+    // تحديد isVideoOnly:
+    // - أولوية للحقل المُرسل من الواجهة إن وُجد.
+    // - وإلا: لو يوجد videoUrl والمحتوى فعليًا فارغ → true؛ غير ذلك false.
+    const computedIsVideoOnly =
+      typeof parsed.isVideoOnly === 'boolean'
+        ? parsed.isVideoOnly
+        : !!parsed.videoUrl && isEffectivelyEmpty(parsed.content);
+
     const doc: ArticleDoc = {
       slug: parsed.slug,
       title: parsed.title,
@@ -208,8 +249,9 @@ export async function POST(req: NextRequest) {
       categoryId: parsed.categoryId,
       coverUrl: parsed.coverUrl,
       videoUrl: parsed.videoUrl,
+      isVideoOnly: computedIsVideoOnly,
       meta: parsed.meta,
-      status: 'published',          // ✅ ننشر مباشرةً، لا draft
+      status: 'published',                // ننشر مباشرةً
       createdAt: now,
       updatedAt: now,
       readingTime: `${minutes} min read`,

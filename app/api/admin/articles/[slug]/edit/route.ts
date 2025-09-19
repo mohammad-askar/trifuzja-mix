@@ -17,12 +17,13 @@ interface ArticleDocDb {
   slug: string;
   title: string;
   excerpt?: string;
-  content: string;
+  content?: string;          // ← صارت اختيارية لدعم videoOnly
   categoryId?: string;
   coverUrl?: string;
-  heroImageUrl?: string; // توافقية قديمة
+  heroImageUrl?: string;     // توافقية قديمة
   videoUrl?: string;
-  status?: 'published';   // لا نستخدم draft
+  videoOnly?: boolean;       // ← جديد
+  status?: 'published';      // لا نستخدم draft
   createdAt?: Date;
   updatedAt: Date;
   readingTime?: string;
@@ -44,18 +45,45 @@ const urlOrAppPath = z
   });
 
 /** حمولة حفظ المقال — حقول مسطّحة (بولندية فقط) */
-const BodySchema = z.object({
-  title: z.string().min(1),
-  excerpt: z.string().optional(),
-  content: z.string().min(1),
-  categoryId: z.string().min(1).optional(),
-  coverUrl: urlOrAppPath.optional(),
-  heroImageUrl: urlOrAppPath.optional(),
-  videoUrl: urlOrAppPath.optional(),
-  // نقبل رقمًا أو نصًا ونخزّنه كنص
-  readingTime: z.union([z.number().int().nonnegative(), z.string().min(1)]).optional(),
-  meta: z.record(z.string(), z.unknown()).optional(),
-});
+const BodySchema = z
+  .object({
+    title: z.string().min(1),
+    excerpt: z.string().optional(),
+    content: z.string().optional(),         // ← لم تعد إلزامية هنا
+    categoryId: z.string().min(1).optional(),
+    coverUrl: urlOrAppPath.optional(),
+    heroImageUrl: urlOrAppPath.optional(),
+    videoUrl: urlOrAppPath.optional(),
+    videoOnly: z.boolean().optional(),      // ← جديد
+    // نقبل رقمًا أو نصًا ونخزّنه كنص
+    readingTime: z.union([z.number().int().nonnegative(), z.string().min(1)]).optional(),
+    meta: z.record(z.string(), z.unknown()).optional(),
+  })
+  .superRefine((data, ctx) => {
+    const isVideo = data.videoOnly === true;
+
+    // شرط: إن كان فيديو فقط → videoUrl مطلوب
+    if (isVideo && !data.videoUrl) {
+      ctx.addIssue({
+        path: ['videoUrl'],
+        code: z.ZodIssueCode.custom,
+        message: 'videoUrl is required when videoOnly is true',
+      });
+    }
+
+    // شرط: إن لم يكن فيديو فقط → content مطلوب وغير فارغ
+    if (!isVideo) {
+      const c = (data.content ?? '').trim();
+      if (!c) {
+        ctx.addIssue({
+          path: ['content'],
+          code: z.ZodIssueCode.custom,
+          message: 'content is required when videoOnly is false',
+        });
+      }
+    }
+  });
+
 type Body = z.infer<typeof BodySchema>;
 
 /* -------------------------------- Helpers ------------------------------ */
@@ -157,22 +185,28 @@ export async function PUT(req: NextRequest, ctx: Ctx) {
     // نبني $set بدون undefined — ونضمن النشر دائمًا
     const set: Partial<ArticleDocDb> = {
       title: data.title,
-      content: data.content,
       updatedAt: new Date(),
       status: 'published', // ننشر دائمًا
     };
 
+    // محتوى/ملخص/تصنيف (تُرسل فقط عند التغيير)
+    if (data.content !== undefined) set.content = data.content;
     if (data.excerpt !== undefined) set.excerpt = data.excerpt;
     if (data.categoryId !== undefined) set.categoryId = data.categoryId;
-    if (data.videoUrl !== undefined) set.videoUrl = data.videoUrl;
-    if (data.meta !== undefined) set.meta = data.meta as Record<string, unknown>;
 
+    // فيديو
+    if (data.videoUrl !== undefined) set.videoUrl = data.videoUrl;
+    if (data.videoOnly !== undefined) set.videoOnly = data.videoOnly;
+
+    // ميتا ووقت قراءة
+    if (data.meta !== undefined) set.meta = data.meta as Record<string, unknown>;
     const rt = toPlainStringReadingTime(data.readingTime);
     if (rt !== undefined) set.readingTime = rt;
 
+    // صورة الغلاف (مع إبقاء heroImageUrl للتوافق)
     if (unifiedCover !== undefined) {
       set.coverUrl = unifiedCover;
-      set.heroImageUrl = unifiedCover; // إبقاء الحقل للتوافق
+      set.heroImageUrl = unifiedCover;
     }
 
     // نعيد الوثيقة المعدلة مباشرةً بدون جلب ثانٍ

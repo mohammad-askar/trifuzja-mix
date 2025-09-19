@@ -1,4 +1,3 @@
-// E:\trifuzja-mix\app\components\ArticleEditor.tsx
 'use client';
 
 import React, {
@@ -18,7 +17,12 @@ import toast from 'react-hot-toast';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { useDropzone } from 'react-dropzone';
-import Image from 'next/image';
+// ⛔️ لم نعد نستخدم Image هنا (موجود داخل CoverPreview)
+// import Image from 'next/image';
+
+/* مكوّناتك الجديدة */
+import VideoOnlyToggle from '@/app/components/editor/VideoOnlyToggle';
+import CoverPreview from '@/app/components/editor/CoverPreview';
 
 /* ------------------------------- Types -------------------------------- */
 type Locale = 'en' | 'pl';
@@ -48,6 +52,10 @@ const T = {
     uploadOk: 'Image uploaded', loading: 'Loading…', saving: 'Saving…',
     savedAt: (t: string) => `Saved ${t}`, slugOk: '✓ slug available', slugInUse: 'Slug in use',
     readTime: 'min read', pressToSave: 'Press Ctrl/Cmd + S to save',
+    /* جديد */
+    videoOnly: 'Video only (no text content)',
+    videoOnlyHint: 'This article will appear under the Videos section and hide the text editor.',
+    videoUrlLabel: 'Video URL',
   },
   pl: {
     title: 'Tytuł', excerpt: 'Opis', slug: 'Slug', cat: 'Kategoria', cover: 'Grafika',
@@ -57,6 +65,10 @@ const T = {
     uploadOk: 'Załadowano obraz', loading: 'Ładowanie…', saving: 'Zapisywanie…',
     savedAt: (t: string) => `Zapisano o ${t}`, slugOk: '✓ slug dostępny', slugInUse: 'Slug zajęty',
     readTime: 'min czytania', pressToSave: 'Wciśnij Ctrl/Cmd + S aby zapisać',
+    /* جديد */
+    videoOnly: 'Tylko wideo (bez treści)',
+    videoOnlyHint: 'Artykuł trafi do sekcji Wideo i ukryje edytor tekstu.',
+    videoUrlLabel: 'Link do wideo',
   },
 } as const;
 
@@ -99,6 +111,14 @@ function toPolishName(name: CategoryFromApi['name']): string {
   );
   return (first ?? '').trim();
 }
+
+/** هل المحتوى فعليًا فارغ (بعد نزع الوسوم)؟ */
+const isEffectivelyEmpty = (html?: string): boolean =>
+  (html ?? '')
+    .replace(/<[^>]+>/g, ' ')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .length <= 20;
 
 /* ------------------------------ Hooks --------------------------------- */
 export function useDebouncedCallback<A extends unknown[]>(
@@ -197,7 +217,13 @@ export default function ArticleEditor({
     },
   });
 
-  const [content, setContent] = useState<string>(fromAny(defaultData.content, locale));
+  /* محتوى ابتدائي + حالة فيديو فقط */
+  const initialContent = fromAny(defaultData.content, locale);
+  const [content, setContent] = useState<string>(initialContent);
+  const [isVideoOnly, setIsVideoOnly] = useState<boolean>(() => {
+    return Boolean(defaultData.videoUrl) && isEffectivelyEmpty(initialContent);
+  });
+
   const [cover, setCover] = useState(defaultData.coverUrl ?? '');
 
   // نقطة التركيز للصورة
@@ -237,7 +263,6 @@ export default function ArticleEditor({
     (async () => {
       setLoadingCats(true);
       try {
-        // يمكنك استخدام /api/admin/categories أيضًا — كلاهما أعدّلناه ليعيد name: string
         const r = await fetch(`/api/categories`);
         if (!r.ok) throw new Error('HTTP ' + r.status);
         const data = (await r.json()) as CategoryFromApi[];
@@ -283,13 +308,18 @@ export default function ArticleEditor({
   const debouncedCheckSlug = useDebouncedCallback(checkSlugAvailability, 450);
 
   useEffect(() => { debouncedCheckSlug(visibleSlug); }, [visibleSlug, debouncedCheckSlug]);
-  useEffect(() => { setDirty(true); }, [titleVal, excerptVal, content, categoryId, cover, coverPosition]);
+  useEffect(() => { setDirty(true); }, [titleVal, excerptVal, content, categoryId, cover, coverPosition, isVideoOnly]);
 
   useEffect(() => {
     const handler = (e: BeforeUnloadEvent) => { if (dirty) { e.preventDefault(); e.returnValue = ''; } };
     window.addEventListener('beforeunload', handler);
     return () => window.removeEventListener('beforeunload', handler);
   }, [dirty]);
+
+  // لو فعلنا "فيديو فقط" نخلي المحتوى النصي فاضي
+  useEffect(() => {
+    if (isVideoOnly && !isEffectivelyEmpty(content)) setContent('');
+  }, [isVideoOnly, content]);
 
   // سحب/تحريك نقطة التركيز للصورة
   const handleFocalPointMove = useCallback((clientX: number, clientY: number) => {
@@ -310,18 +340,19 @@ export default function ArticleEditor({
     }
   }, [handleFocalPointMove]);
 
-  // Autosave (يحفظ كحقول بسيطة بدون لغات) — status دائماً published في الباك إند
+  // Autosave — مع دعم isVideoOnly
   const autosave = useCallback(async () => {
     if (!ready || (!isEdit && slugAvailable === false)) return;
 
     const payload = {
       title: titleVal,
       excerpt: excerptVal,
-      content,                 // string
+      content: isVideoOnly ? '' : content,
       categoryId,
       coverUrl: cover || undefined,
       videoUrl: (watch('videoUrl') || '').trim() || undefined,
-      readingTime: reading,
+      readingTime: isVideoOnly ? undefined : reading,
+      isVideoOnly, // جديد
       meta: { ...(defaultData.meta || {}), coverPosition },
     };
 
@@ -336,12 +367,12 @@ export default function ArticleEditor({
     } finally { setSaving(false); }
   }, [
     ready, isEdit, slugAvailable, defaultData, titleVal, excerptVal, content,
-    categoryId, cover, reading, visibleSlug, watch, coverPosition,
+    categoryId, cover, reading, visibleSlug, watch, coverPosition, isVideoOnly,
   ]);
 
   const debouncedAutosave = useDebouncedCallback(autosave, 1200);
   useEffect(() => { debouncedAutosave(); }, [
-    titleVal, excerptVal, content, categoryId, cover, coverPosition, debouncedAutosave,
+    titleVal, excerptVal, content, categoryId, cover, coverPosition, isVideoOnly, debouncedAutosave,
   ]);
 
   const onKeyDown = (e: KeyboardEvent<HTMLFormElement>) => {
@@ -381,7 +412,7 @@ export default function ArticleEditor({
     };
   }, [handleMouseMove, handleMouseUp, handleTouchMove]);
 
-  // Submit (يحفظ حقول بسيطة) — الباك إند ينشر دائمًا (no draft)
+  // Submit — مع isVideoOnly
   const onSubmit = async (fv: FormValues) => {
     if (!isEdit && slugAvailable === false) { toast.error(text.slugInUse); return; }
     const slugForSubmit = visibleSlug;
@@ -389,11 +420,12 @@ export default function ArticleEditor({
     const payload = {
       title: fv.title,
       excerpt: fv.excerpt,
-      content,                     // string
+      content: isVideoOnly ? '' : content,
       categoryId: fv.categoryId,
       coverUrl: cover || undefined,
       videoUrl: fv.videoUrl?.trim() || undefined,
-      readingTime: reading,
+      readingTime: isVideoOnly ? undefined : reading,
+      isVideoOnly, // جديد
       meta: { ...(defaultData.meta || {}), coverPosition },
     };
 
@@ -466,27 +498,25 @@ export default function ArticleEditor({
             <option value="">{text.cat}</option>
             {cats.map((c) => (
               <option key={c._id} value={c._id}>
-                {c.name} {/* ✅ اسم بولندي فقط */}
+                {c.name}
               </option>
             ))}
           </select>
         )}
       </div>
 
-      {/* TipTap Editor */}
-      <div className="space-y-1 rounded-lg border border-gray-200 dark:border-zinc-700 p-3">
-        <TipTap content={content} setContent={setContent} />
-        <div className="flex justify-between gap-2 text-xs text-gray-500 dark:text-gray-400">
-          <span>
-            {words} {text.words} • {reading}
-          </span>
-        </div>
-      </div>
+      {/* Video-only toggle */}
+      <VideoOnlyToggle
+        checked={isVideoOnly}
+        onChange={setIsVideoOnly}
+        label={text.videoOnly}
+        hint={text.videoOnlyHint}
+      />
 
       {/* Video URL */}
       <div>
         <label className="text-xs font-medium text-gray-700 dark:text-gray-300" htmlFor="video-url">
-          Video URL
+          {text.videoUrlLabel}
         </label>
         <input
           id="video-url"
@@ -495,6 +525,24 @@ export default function ArticleEditor({
           className="w-full rounded-lg border px-3 py-2 bg-white dark:bg-zinc-900 border-gray-300 dark:border-zinc-700 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
         />
       </div>
+
+      {/* TipTap Editor — مخفي لو فيديو فقط */}
+      {!isVideoOnly ? (
+        <div className="space-y-1 rounded-lg border border-gray-200 dark:border-zinc-700 p-3">
+          <TipTap content={content} setContent={setContent} />
+          <div className="flex justify-between gap-2 text-xs text-gray-500 dark:text-gray-400">
+            <span>
+              {words} {text.words} • {reading}
+            </span>
+          </div>
+        </div>
+      ) : (
+        <div className="rounded-lg border border-dashed border-gray-300 dark:border-zinc-700 p-3 text-sm text-gray-500 dark:text-gray-400">
+          {locale === 'pl'
+            ? 'Tryb tylko wideo — edytor tekstu ukryty.'
+            : 'Video-only mode — text editor hidden.'}
+        </div>
+      )}
 
       {/* Cover Upload & Preview */}
       <div>
@@ -512,35 +560,14 @@ export default function ArticleEditor({
         </div>
 
         {cover && (
-          <div
-            ref={coverContainerRef}
-            onMouseDown={handleMouseDown}
-            onTouchStart={handleMouseDown}
-            className="relative h-44 mt-3 rounded-lg overflow-hidden border border-gray-200 dark:border-zinc-800 cursor-grab active:cursor-grabbing"
-            title="Click and drag to set the focal point"
-          >
-            <Image
-              src={cover.startsWith('http') ? cover : cover.startsWith('/') ? cover : `/${cover}`}
-              alt="cover"
-              fill
-              className="object-cover pointer-events-none"
-              style={{ objectPosition: `${coverPosition.x}% ${coverPosition.y}%` }}
-              priority
-            />
-            <button
-              type="button"
-              onClick={() => setCover('')}
-              className="absolute top-2 right-2 bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-lg leading-none z-10"
-              aria-label="Remove cover"
-              title="Remove cover"
-            >
-              ×
-            </button>
-            <div
-              className="absolute w-4 h-4 -translate-x-1/2 -translate-y-1/2 border-2 border-white bg-white/30 rounded-full pointer-events-none z-10"
-              style={{ left: `${coverPosition.x}%`, top: `${coverPosition.y}%` }}
-            />
-          </div>
+          <CoverPreview
+            cover={cover}
+            coverPosition={coverPosition}
+            setCover={setCover}
+            setCoverPosition={setCoverPosition}
+            coverContainerRef={coverContainerRef}
+            onMouseDownGlobal={handleMouseDown}
+          />
         )}
       </div>
 
@@ -553,7 +580,7 @@ export default function ArticleEditor({
         </div>
       </div>
 
-      {/* زر حفظ عائم داخل حدود المقال (محاذاة ديناميكية) */}
+      {/* زر حفظ عائم */}
       <button
         type="submit"
         disabled={!canSubmit || isSubmitting}

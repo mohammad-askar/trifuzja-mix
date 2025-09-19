@@ -20,12 +20,13 @@ interface ArticleDocDb {
   slug: string;
   title: string;
   excerpt?: string;
-  content: string;
+  content?: string;            // ← صارت اختيارية لدعم videoOnly
   categoryId: string;
   coverUrl?: string;
-  heroImageUrl?: string;     // توافقية: قد توجد تاريخيًا
+  heroImageUrl?: string;       // توافقية
   videoUrl?: string;
-  status?: 'published';      // لا draft بعد الآن
+  videoOnly?: boolean;         // ← جديد
+  status?: 'published';
   createdAt: Date;
   updatedAt: Date;
   readingTime?: string;
@@ -75,19 +76,43 @@ const relativeOrAbsoluteUrl = z
     { message: 'Invalid URL' },
   );
 
-// ✅ مخطط أحادي اللغة (لا en/pl)
-const UpsertSchema = z.object({
-  title: z.string().min(1),
-  excerpt: z.string().optional(),
-  content: z.string().min(1),
-  categoryId: z.string().min(1, 'categoryId is required'),
-  coverUrl: relativeOrAbsoluteUrl.optional(),
-  heroImageUrl: relativeOrAbsoluteUrl.optional(), // للتوافقية
-  videoUrl: relativeOrAbsoluteUrl.optional(),
-  // نقبل رقمًا أو نصًا عند الإدخال ونحوّله لاحقًا إلى نص
-  readingTime: z.union([z.number().int().nonnegative(), z.string().min(1)]).optional(),
-  meta: z.record(z.string(), z.unknown()).optional(),
-});
+// ✅ مخطط أحادي اللغة (لا en/pl) + دعم videoOnly
+const UpsertSchema = z
+  .object({
+    title: z.string().min(1),
+    excerpt: z.string().optional(),
+    content: z.string().optional(), // ← لم تعد إلزامية
+    categoryId: z.string().min(1, 'categoryId is required'),
+    coverUrl: relativeOrAbsoluteUrl.optional(),
+    heroImageUrl: relativeOrAbsoluteUrl.optional(), // للتوافقية
+    videoUrl: relativeOrAbsoluteUrl.optional(),
+    videoOnly: z.boolean().optional(),              // ← جديد
+    // نقبل رقمًا أو نصًا عند الإدخال ونحوّله لاحقًا إلى نص
+    readingTime: z.union([z.number().int().nonnegative(), z.string().min(1)]).optional(),
+    meta: z.record(z.string(), z.unknown()).optional(),
+  })
+  .superRefine((data, ctx) => {
+    const isVideo = data.videoOnly === true;
+
+    if (isVideo && !data.videoUrl) {
+      ctx.addIssue({
+        path: ['videoUrl'],
+        code: z.ZodIssueCode.custom,
+        message: 'videoUrl is required when videoOnly is true',
+      });
+    }
+
+    if (!isVideo) {
+      const c = (data.content ?? '').trim();
+      if (!c) {
+        ctx.addIssue({
+          path: ['content'],
+          code: z.ZodIssueCode.custom,
+          message: 'content is required when videoOnly is false',
+        });
+      }
+    }
+  });
 
 function computeReadingTimeFromHtml(html?: string) {
   if (!html) return undefined;
@@ -155,7 +180,7 @@ export async function PUT(req: NextRequest, ctx: Ctx) {
     const slug = normalizeSlug(rawSlug);
     const body = UpsertSchema.parse(await req.json());
 
-    // حساب وقت القراءة من الـ HTML أحادي اللغة إن لم يُرسل
+    // readingTime: إن لم يُرسل وحال وجود content نحسبه
     let readingTime = toPlainStringReadingTime(body.readingTime);
     if (!readingTime && body.content) {
       readingTime = computeReadingTimeFromHtml(body.content);
@@ -171,16 +196,19 @@ export async function PUT(req: NextRequest, ctx: Ctx) {
     const set: Partial<ArticleDocDb> = {
       slug,
       title: body.title,
-      content: body.content,
       categoryId: body.categoryId,
       updatedAt: now,
       status: 'published',
     };
 
+    // حقول اختيارية — لا نضع undefined
+    if (body.content !== undefined) set.content = body.content;
     if (body.excerpt !== undefined) set.excerpt = body.excerpt;
     if (body.videoUrl !== undefined) set.videoUrl = body.videoUrl;
+    if (body.videoOnly !== undefined) set.videoOnly = body.videoOnly;
     if (body.meta !== undefined) set.meta = body.meta as Record<string, unknown>;
     if (readingTime !== undefined) set.readingTime = readingTime;
+
     if (cover !== undefined) {
       set.coverUrl = cover;
       set.heroImageUrl = cover; // إبقاء الحقل للتوافق

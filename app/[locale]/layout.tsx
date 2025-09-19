@@ -16,7 +16,7 @@ export default async function LocaleLayout({ children, params }: LocaleLayoutPro
     <>
       <Header locale={locale} />
       {/* 👇 Spacer يمنع التداخل مع الهيدر الثابت */}
-      <div className="h-15" aria-hidden />
+      <div className="h-1" aria-hidden />
       {/* لا تضف pt-20 هنا */}
       <main className="min-h-screen ">{children}</main>
       <Footer locale={locale} />
