@@ -136,7 +136,7 @@ export default async function LocaleHome({
   return (
     <main className="min-h-screen bg-gray-900 text-white">
       {/* الهيرو */}
-      <section className="relative text-center mt-15 py-24 px-4 bg-gradient-to-br from-gray-900 via-zinc-800 to-gray-900 overflow-hidden">
+      <section className="relative text-center mt-15 py-25 px-4 bg-gradient-to-br from-gray-900 via-zinc-800 to-gray-900 overflow-hidden">
         <div
           className="absolute inset-0 bg-[url('/images/hero-bg.jpg')] bg-cover bg-center opacity-10"
           aria-hidden="true"
