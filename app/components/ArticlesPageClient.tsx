@@ -9,36 +9,29 @@ import ArticlesList from '@/app/components/ArticlesList';
 
 type Locale = 'en' | 'pl';
 
-// شكل الواير القادم من الـ API (قد يكون name: string أو name: {en,pl})
+// الواير من الـ API (قد يكون string أو {en,pl} قديم)
 type CategoryWire = {
   _id: string;
   name: unknown;
 };
 
-type CategoryForChips = {
-  _id: string;
-  name: Record<Locale, string>;
-};
+const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
-const fetcher = (url: string) => fetch(url).then(res => res.json());
-
-function normalizeNameToRecord(input: unknown): Record<Locale, string> {
-  if (typeof input === 'string') {
-    const v = input.trim();
-    return { en: v, pl: v };
-  }
+function normalizeNameToPl(input: unknown): string {
+  if (typeof input === 'string') return input.trim();
   if (input && typeof input === 'object') {
     const obj = input as Record<string, unknown>;
-    const en = typeof obj.en === 'string' ? obj.en.trim() : undefined;
-    const pl = typeof obj.pl === 'string' ? obj.pl.trim() : undefined;
-    const fallback =
-      (Object.values(obj).find(v => typeof v === 'string' && v.trim()) as string | undefined) ?? '';
-    return {
-      en: en ?? fallback ?? '',
-      pl: pl ?? en ?? fallback ?? '',
-    };
+    const pl = typeof obj.pl === 'string' ? obj.pl.trim() : '';
+    if (pl) return pl;
+    const en = typeof obj.en === 'string' ? obj.en.trim() : '';
+    if (en) return en;
+    const first =
+      (Object.values(obj).find((v) => typeof v === 'string' && v.trim().length > 0) as
+        | string
+        | undefined) ?? '';
+    return first.trim();
   }
-  return { en: '', pl: '' };
+  return '';
 }
 
 export default function ArticlesPageClient({ locale }: { locale: Locale }) {
@@ -47,12 +40,12 @@ export default function ArticlesPageClient({ locale }: { locale: Locale }) {
 
   const { data } = useSWR<CategoryWire[]>('/api/categories', fetcher);
 
-  // نطبع الفئات لشكل متوافق مع CategoryChips: name = { en, pl }
-  const categories: CategoryForChips[] = useMemo(() => {
+  // ← نحول الاسم إلى بولندي فقط ليتوافق مع CategoryChips (name: string)
+  const categories = useMemo((): { _id: string; name: string }[] => {
     const list = Array.isArray(data) ? data : [];
     return list.map(({ _id, name }) => ({
       _id,
-      name: normalizeNameToRecord(name),
+      name: normalizeNameToPl(name),
     }));
   }, [data]);
 
@@ -62,9 +55,9 @@ export default function ArticlesPageClient({ locale }: { locale: Locale }) {
         {locale === 'pl' ? 'Wszystkie artykuły' : 'All Articles'}
       </h1>
 
-      <CategoryChips categories={categories} selected={selected} locale={locale} />
+      {/* لا نمرر locale لأن المكوّن يعرض البولندي دائمًا */}
+      <CategoryChips categories={categories} selected={selected} />
 
-      {/* ✅ بدون pageKey */}
       <ArticlesList locale={locale} catsParam={selected} />
     </main>
   );

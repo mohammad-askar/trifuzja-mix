@@ -1,4 +1,4 @@
-// 📁 E:\trifuzja-mix\app\[locale]\categories\page.tsx
+// 📁 app/[locale]/categories/page.tsx
 import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
 import clientPromise from '@/types/mongodb';
@@ -7,9 +7,29 @@ import type { ObjectId } from 'mongodb';
 
 type Locale = 'en' | 'pl';
 
-interface Category {
-  _id:  string;
+interface CategoryUi {
+  _id: string;
   name: { en: string; pl: string };
+}
+
+/* ------------------ helpers ------------------ */
+function normalizeName(input: unknown): { en: string; pl: string } {
+  if (typeof input === 'string') {
+    const v = input.trim();
+    return { en: v, pl: v };
+  }
+  if (input && typeof input === 'object') {
+    const obj = input as Record<string, unknown>;
+    const en = typeof obj.en === 'string' ? obj.en.trim() : '';
+    const pl = typeof obj.pl === 'string' ? obj.pl.trim() : '';
+    if (en && pl) return { en, pl };
+    if (pl) return { en: pl, pl };
+    if (en) return { en, pl: en };
+    const first = Object.values(obj).find((v): v is string => typeof v === 'string') ?? '';
+    const fallback = first.trim();
+    return { en: fallback, pl: fallback };
+  }
+  return { en: '', pl: '' };
 }
 
 /* ------------------ 1) Metadata ------------------ */
@@ -19,9 +39,7 @@ export async function generateMetadata({
   params: Promise<{ locale: Locale }>;
 }): Promise<Metadata> {
   const { locale } = await params;
-  return {
-    title: locale === 'pl' ? 'Kategorie' : 'Categories',
-  };
+  return { title: locale === 'pl' ? 'Kategorie' : 'Categories' };
 }
 
 /* ------------------ 2) Page ------------------ */
@@ -35,24 +53,24 @@ export default async function PublicCatsPage({
   const { locale } = await params;
   const sp = await searchParams;
 
-  /* ---------- جلب التصنيفات من MongoDB ---------- */
-  const client = await clientPromise;
-  const db = client.db();
-
+  // جلب التصنيفات (قد تكون string أو {en,pl})
+  const db = (await clientPromise).db();
   const docs = await db
-    .collection<{ _id: ObjectId; name: { en: string; pl: string } }>('categories')
-    .find()
-    .sort({ 'name.en': 1 })
+    .collection<{ _id: ObjectId; name: unknown }>('categories')
+    .find({}, { projection: { name: 1 } })
     .toArray();
 
   if (!docs.length) notFound();
 
-  const categories: Category[] = docs.map(d => ({
-    _id: d._id.toHexString(),
-    name: d.name,
-  }));
+  // تطبيع + ترتيب دائمًا بالبولندي
+  const categories: CategoryUi[] = docs
+    .map((d) => ({ _id: d._id.toHexString(), name: normalizeName(d.name) }))
+    .sort((a, b) => a.name.pl.localeCompare(b.name.pl, 'pl'));
 
-  /* ---------- تجهيز الفئات المختارة من ?cat= ---------- */
+  // ← نحولت للأسماء البولندية فقط لأن CategoryChips يتوقع name:string
+  const chipCats = categories.map((c) => ({ _id: c._id, name: c.name.pl }));
+
+  // تحضير selected من query ?cat
   const raw = sp?.cat;
   const selected: string[] = Array.isArray(raw) ? raw : raw ? [raw] : [];
 
@@ -62,7 +80,8 @@ export default async function PublicCatsPage({
         {locale === 'pl' ? 'Kategorie' : 'Categories'}
       </h1>
 
-      <CategoryChips categories={categories} selected={selected} locale={locale} />
+      {/* لا نمرر locale هنا لأن CategoryChips يعرض البولندي دائمًا */}
+      <CategoryChips categories={chipCats} selected={selected} />
     </main>
   );
 }
