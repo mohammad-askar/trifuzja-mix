@@ -6,13 +6,35 @@ import clientPromise from '@/types/mongodb';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/authOptions';
 import { z, ZodError } from 'zod';
+import type { ObjectId } from 'mongodb';
 
 /* ------------------------------------------------------------------ */
-/*                           Helpers & Schema                         */
+/*                           Types & Helpers                           */
 /* ------------------------------------------------------------------ */
 
 // في App Router قد يأتي params كـ Promise — ننتظره دائماً
 type Ctx = { params: Promise<{ slug: string }> };
+
+interface ArticleDocDb {
+  _id: ObjectId;
+  slug: string;
+  title: string;
+  excerpt?: string;
+  content: string;
+  categoryId: string;
+  coverUrl?: string;
+  heroImageUrl?: string;     // توافقية: قد توجد تاريخيًا
+  videoUrl?: string;
+  status?: 'published';      // لا draft بعد الآن
+  createdAt: Date;
+  updatedAt: Date;
+  readingTime?: string;
+  meta?: Record<string, unknown>;
+}
+
+interface ArticleDocApi extends Omit<ArticleDocDb, '_id'> {
+  _id: string;
+}
 
 type AdminSessionShape =
   | {
@@ -88,7 +110,7 @@ function toPlainStringReadingTime(rt?: number | string): string | undefined {
 }
 
 /* ------------------------------------------------------------------ */
-/*                               GET                                  */
+/*                               GET                                   */
 /* ------------------------------------------------------------------ */
 
 export async function GET(_req: NextRequest, ctx: Ctx) {
@@ -99,11 +121,20 @@ export async function GET(_req: NextRequest, ctx: Ctx) {
   try {
     const slug = normalizeSlug(rawSlug);
     const db = (await clientPromise).db();
-    const article = await db.collection('articles').findOne({ slug });
+    const article = await db
+      .collection<ArticleDocDb>('articles')
+      .findOne({ slug });
+
     if (!article) return responseError('Not found', 404);
-    return NextResponse.json(article, { status: 200 });
+
+    const out: ArticleDocApi = {
+      ...article,
+      _id: article._id.toString(),
+    };
+
+    return NextResponse.json(out, { status: 200 });
   } catch (e) {
-    if ((e as Error).message === 'Invalid slug') {
+    if (e instanceof Error && e.message === 'Invalid slug') {
       return responseError('Invalid slug', 400);
     }
     console.error('GET /api/admin/articles/[slug] error:', e);
@@ -112,7 +143,7 @@ export async function GET(_req: NextRequest, ctx: Ctx) {
 }
 
 /* ------------------------------------------------------------------ */
-/*                               PUT (Upsert)                         */
+/*                               PUT (Upsert)                          */
 /* ------------------------------------------------------------------ */
 
 export async function PUT(req: NextRequest, ctx: Ctx) {
@@ -132,12 +163,12 @@ export async function PUT(req: NextRequest, ctx: Ctx) {
 
     const now = new Date();
     const db = (await clientPromise).db();
-    const coll = db.collection('articles');
+    const coll = db.collection<ArticleDocDb>('articles');
 
     const cover = body.coverUrl ?? body.heroImageUrl;
 
     // ✅ ننشر دائمًا: status: 'published'
-    const set: Record<string, unknown> = {
+    const set: Partial<ArticleDocDb> = {
       slug,
       title: body.title,
       content: body.content,
@@ -148,7 +179,7 @@ export async function PUT(req: NextRequest, ctx: Ctx) {
 
     if (body.excerpt !== undefined) set.excerpt = body.excerpt;
     if (body.videoUrl !== undefined) set.videoUrl = body.videoUrl;
-    if (body.meta !== undefined) set.meta = body.meta;
+    if (body.meta !== undefined) set.meta = body.meta as Record<string, unknown>;
     if (readingTime !== undefined) set.readingTime = readingTime;
     if (cover !== undefined) {
       set.coverUrl = cover;
@@ -157,7 +188,10 @@ export async function PUT(req: NextRequest, ctx: Ctx) {
 
     const res = await coll.updateOne(
       { slug },
-      { $set: set, $setOnInsert: { createdAt: now } },
+      {
+        $set: set,
+        $setOnInsert: { createdAt: now },
+      },
       { upsert: true },
     );
 
@@ -167,7 +201,7 @@ export async function PUT(req: NextRequest, ctx: Ctx) {
     if (e instanceof ZodError) {
       return responseError(e.issues.map((i) => i.message).join(' | '), 400);
     }
-    if ((e as Error).message === 'Invalid slug') {
+    if (e instanceof Error && e.message === 'Invalid slug') {
       return responseError('Invalid slug', 400);
     }
     console.error('PUT /api/admin/articles/[slug] error:', e);
@@ -176,7 +210,7 @@ export async function PUT(req: NextRequest, ctx: Ctx) {
 }
 
 /* ------------------------------------------------------------------ */
-/*                               DELETE                               */
+/*                               DELETE                                */
 /* ------------------------------------------------------------------ */
 
 export async function DELETE(_req: NextRequest, ctx: Ctx) {
@@ -187,11 +221,11 @@ export async function DELETE(_req: NextRequest, ctx: Ctx) {
   try {
     const slug = normalizeSlug(rawSlug);
     const db = (await clientPromise).db();
-    const res = await db.collection('articles').deleteOne({ slug });
+    const res = await db.collection<ArticleDocDb>('articles').deleteOne({ slug });
     if (res.deletedCount === 0) return responseError('Not found', 404);
     return NextResponse.json({ ok: true, slug }, { status: 200 });
   } catch (e) {
-    if ((e as Error).message === 'Invalid slug') {
+    if (e instanceof Error && e.message === 'Invalid slug') {
       return responseError('Invalid slug', 400);
     }
     console.error('DELETE /api/admin/articles/[slug] error:', e);

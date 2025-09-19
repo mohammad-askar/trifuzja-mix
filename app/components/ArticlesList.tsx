@@ -20,7 +20,7 @@ interface ArticleSummary {
 }
 
 interface Props {
-  locale?: Locale;
+  locale?: Locale; // سيُتجاهَل داخليًا
   catsParam?: string[] | string | null;
 }
 
@@ -28,24 +28,38 @@ type ApiListResponse =
   | ArticleSummary[]
   | { articles?: ArticleSummary[]; total?: number };
 
+const EFFECTIVE_LOCALE: Locale = 'pl';
+
+function getErrorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  try {
+    return JSON.stringify(err);
+  } catch {
+    return String(err);
+  }
+}
+
 async function fetchPage(opts: {
-  locale: Locale;
   cats: string[];
   pageNo: number;
   limit: number;
   signal?: AbortSignal;
 }): Promise<{ list: ArticleSummary[]; total: number }> {
-  const { locale, cats, pageNo, limit, signal } = opts;
+  const { cats, pageNo, limit, signal } = opts;
 
+  // ✅ نُثبت البولندية في الاستعلام
   const qs = new URLSearchParams({
     pageNo: String(pageNo),
     limit: String(limit),
-    locale, // ✅ مهم لانتقاء النص باللّغة الصحيحة في الـ API
+    locale: EFFECTIVE_LOCALE,
   });
   cats.forEach((id) => qs.append('cat', id));
 
   const res = await fetch(`/api/articles?${qs.toString()}`, { signal });
-  if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`HTTP ${res.status}: ${text}`);
+  }
 
   const data: ApiListResponse = await res.json();
   return Array.isArray(data)
@@ -53,7 +67,8 @@ async function fetchPage(opts: {
     : { list: data.articles ?? [], total: data.total ?? 0 };
 }
 
-export default function ArticlesList({ locale = 'en', catsParam }: Props) {
+export default function ArticlesList({ catsParam }: Props) {
+  // نُبقي API المكوّن كما هو، لكن نتجاهل locale ونستخدم البولندية داخليًا
   const cats = useMemo<string[]>(
     () =>
       catsParam == null ? [] : Array.isArray(catsParam) ? catsParam : [catsParam],
@@ -69,7 +84,7 @@ export default function ArticlesList({ locale = 'en', catsParam }: Props) {
   // هنستخدم نفس الـ controller لأول صفحة
   const firstPageAbort = useRef<AbortController | null>(null);
 
-  // تحميل الصفحة الأولى + إعادة الضبط عند تغيّر الفلاتر/اللغة
+  // تحميل الصفحة الأولى + إعادة الضبط عند تغيّر الفلاتر
   useEffect(() => {
     firstPageAbort.current?.abort();
     const controller = new AbortController();
@@ -78,20 +93,19 @@ export default function ArticlesList({ locale = 'en', catsParam }: Props) {
     (async () => {
       setLoad(true);
       try {
-        const { list, total } = await fetchPage({
-          locale,
+        const { list, total: t } = await fetchPage({
           cats,
           pageNo: 1,
           limit: LIMIT,
           signal: controller.signal,
         });
         setItems(list);
-        setTotal(total);
+        setTotal(t);
         setPage(1);
       } catch (e) {
         if (!controller.signal.aborted) {
           console.error(e);
-          toast.error((e as Error).message);
+          toast.error(getErrorMessage(e));
         }
       } finally {
         if (!controller.signal.aborted) setLoad(false);
@@ -99,7 +113,8 @@ export default function ArticlesList({ locale = 'en', catsParam }: Props) {
     })();
 
     return () => controller.abort();
-  }, [locale, cats]);
+    // ✅ لا نعتمد على locale هنا كي لا نعيد الجلب عند تغييره في الهيدر
+  }, [cats]);
 
   // لانهائي: مراقبة العنصر الحارس
   const sentinel = useRef<HTMLDivElement>(null);
@@ -109,8 +124,8 @@ export default function ArticlesList({ locale = 'en', catsParam }: Props) {
     if (!sentinel.current) return;
 
     const io = new IntersectionObserver(
-      (entries) => {
-        const hit = entries[0]?.isIntersecting;
+      (entries: IntersectionObserverEntry[]) => {
+        const hit = entries[0]?.isIntersecting ?? false;
         if (!hit || loading) return;
         if (items.length >= total) return;
 
@@ -124,7 +139,6 @@ export default function ArticlesList({ locale = 'en', catsParam }: Props) {
           try {
             const next = page + 1;
             const { list } = await fetchPage({
-              locale,
               cats,
               pageNo: next,
               limit: LIMIT,
@@ -135,7 +149,7 @@ export default function ArticlesList({ locale = 'en', catsParam }: Props) {
           } catch (e) {
             if (!controller.signal.aborted) {
               console.error(e);
-              toast.error((e as Error).message);
+              toast.error(getErrorMessage(e));
             }
           } finally {
             if (!controller.signal.aborted) setLoad(false);
@@ -150,7 +164,7 @@ export default function ArticlesList({ locale = 'en', catsParam }: Props) {
       io.disconnect();
       moreAbort.current?.abort();
     };
-  }, [items, total, loading, locale, cats, page]);
+  }, [items, total, loading, cats, page]);
 
   const Skel = () => (
     <div className="rounded-2xl overflow-hidden bg-zinc-200 dark:bg-zinc-800 animate-pulse h-72" />
@@ -161,12 +175,14 @@ export default function ArticlesList({ locale = 'en', catsParam }: Props) {
       <section className="grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
         {items.length === 0 && !loading && (
           <p className="col-span-full text-center py-10 text-zinc-600 dark:text-zinc-400">
-            {locale === 'pl' ? 'Brak artykułów.' : 'No articles.'}
+            {/* ✅ رسالة ثابتة بالبولندية */}
+            {'Brak artykułów.'}
           </p>
         )}
 
         {items.map((a) => (
-          <ArticleCard key={a._id} article={a} locale={locale} />
+          // ✅ تمرير البولندية دائمًا للكرت
+          <ArticleCard key={a._id} article={a} locale={EFFECTIVE_LOCALE} />
         ))}
 
         {loading &&

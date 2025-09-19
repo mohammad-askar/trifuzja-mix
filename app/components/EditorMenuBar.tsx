@@ -102,6 +102,7 @@ export default function EditorMenuBar({
           ? 'bg-blue-600 border-blue-600 text-white'
           : 'bg-zinc-800 border-zinc-700 text-zinc-200 hover:bg-zinc-700'
       } disabled:opacity-40`}
+      aria-label={title ?? label}
     >
       {label}
     </button>
@@ -140,6 +141,32 @@ export default function EditorMenuBar({
     run(() => editor.chain().updateAttributes('image', { align }).run());
   };
 
+  /** ---------- Indent / Outdent logic (Tab-like) ---------- */
+  const indentStep = (dir: 'in' | 'out') => {
+    if (!editor) return;
+    // داخل الجداول أو كتلة الكود: لا نعبث
+    if (editor.isActive('table') || editor.isActive('codeBlock')) return;
+
+    // داخل القوائم: sink/lift
+    if (editor.isActive('listItem')) {
+      if (dir === 'in' && editor.can().sinkListItem('listItem')) {
+        run(() => editor.chain().sinkListItem('listItem').run());
+        return;
+      }
+      if (dir === 'out' && editor.can().liftListItem('listItem')) {
+        run(() => editor.chain().liftListItem('listItem').run());
+        return;
+      }
+    }
+
+    // خارج القوائم: عدّل indent على paragraph/heading
+    const isHeading = editor.isActive('heading');
+    const type = isHeading ? 'heading' : 'paragraph';
+    const cur = (editor.getAttributes(type)?.indent as number | undefined) ?? 0;
+    const next = Math.max(0, Math.min(6, cur + (dir === 'in' ? 1 : -1)));
+    run(() => editor.chain().updateAttributes(type, { indent: next }).run());
+  };
+
   /** ---------- Mini Dock ---------- */
   const MiniDock: React.FC = () => (
     <div className="fixed bottom-6 right-6 z-[1100]">
@@ -162,6 +189,13 @@ export default function EditorMenuBar({
           }}
         />
         <Btn label={uploadingImage ? 'Img…' : 'Img'} title="Insert Image" onClick={() => onInsertImage?.()} disabled={uploadingImage || !editor} />
+        <Divider />
+        {/* فاصل */}
+        <Btn label="───" title="Insert separator" onClick={() => run(() => editor!.chain().setHorizontalRule().run())} />
+        <Divider />
+        {/* Indent / Outdent */}
+        <Btn label="⇥" title="Indent (Tab)" onClick={() => indentStep('in')} />
+        <Btn label="⇤" title="Outdent (Shift+Tab)" onClick={() => indentStep('out')} />
         <Divider />
         <Btn label="↶" title="Undo" disabled={!canUndo} onClick={() => run(() => editor!.chain().undo().run())} />
         <Btn label="↷" title="Redo" disabled={!canRedo} onClick={() => run(() => editor!.chain().redo().run())} />
@@ -303,6 +337,15 @@ export default function EditorMenuBar({
           {/* History */}
           <Btn label="↶" title="Undo" disabled={!canUndo} onClick={() => run(() => editor!.chain().undo().run())} />
           <Btn label="↷" title="Redo" disabled={!canRedo} onClick={() => run(() => editor!.chain().redo().run())} />
+
+          <Divider />
+
+          {/* ✅ Separator line */}
+          <Btn label="───" title="Insert separator" onClick={() => run(() => editor!.chain().setHorizontalRule().run())} />
+
+          {/* ✅ Indent / Outdent */}
+          <Btn label="⇥" title="Indent (Tab)" onClick={() => indentStep('in')} />
+          <Btn label="⇤" title="Outdent (Shift+Tab)" onClick={() => indentStep('out')} />
 
           {onSave && (
             <>

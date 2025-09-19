@@ -20,17 +20,19 @@ interface ArticleMeta {
   [key: string]: unknown;
 }
 
-/** مستند المقال بعد التحويل لأحادي اللغة */
+/** مستند المقال (بولندي فقط + دائمًا منشور) */
 export interface ArticleDoc {
   _id?: string;
   slug: string;
-  title: string;           // ← نص واحد فقط (بدون en/pl)
-  excerpt?: string;        // ← نص واحد فقط
-  content?: string;        // ← HTML نصّي واحد
+  title: string;           // نص واحد فقط
+  excerpt?: string;        // نص واحد فقط
+  content?: string;        // HTML نصّي واحد
   categoryId: string;
   coverUrl?: string;
   videoUrl?: string;
-  status?: 'draft' | 'published';
+  /** لا نستخدم draft بعد الآن. السجلات الجديدة دائمًا published.
+   * أبقيناه اختياريًا لدعم السجلات القديمة التي قد لا تملك status. */
+  status?: 'published';
   createdAt: Date;
   updatedAt: Date;
   readingTime?: string;
@@ -62,7 +64,7 @@ const relativeOrAbsoluteUrl = z
  * الاستعلامات المدعومة:
  * - ?pageNo=1&limit=9
  * - ?cat=catId  أو ?cat=cat1,cat2  أو تكرار cat عدة مرات
- * يرجع فقط المنشور (والسجلات القديمة بدون status أيضًا).
+ * يرجع فقط المنشور، وكذلك السجلات القديمة التي قد لا تملك status.
  */
 export async function GET(req: NextRequest) {
   try {
@@ -77,7 +79,7 @@ export async function GET(req: NextRequest) {
       .getAll('cat')
       .flatMap((v) => v.split(',').map((s) => s.trim()).filter(Boolean));
 
-    // فقط المنشور، أو وثائق قديمة بلا status
+    // فقط المنشور، أو وثائق قديمة بلا status (توافق رجعي)
     const filter: Filter<ArticleDoc> = {
       $or: [{ status: 'published' }, { status: { $exists: false } }],
     };
@@ -124,7 +126,7 @@ export async function GET(req: NextRequest) {
       categoryId: d.categoryId,
       coverUrl: d.coverUrl,
       videoUrl: d.videoUrl,
-      status: d.status,
+      status: d.status, // ستكون 'published' أو غير موجودة في القديم
       createdAt: d.createdAt,
       updatedAt: d.updatedAt,
       readingTime: d.readingTime,
@@ -150,7 +152,7 @@ export async function GET(req: NextRequest) {
 }
 
 /* ------------------------------------------------------------------ */
-/*                              POST (create)                          */
+/*                              POST (create)                         */
 /* ------------------------------------------------------------------ */
 /** إنشاء مقال أحادي اللغة، ونشره مباشرةً (status='published'). */
 const ArticleSchema = z.object({
@@ -207,7 +209,7 @@ export async function POST(req: NextRequest) {
       coverUrl: parsed.coverUrl,
       videoUrl: parsed.videoUrl,
       meta: parsed.meta,
-      status: 'published',          // ← ننشر مباشرةً
+      status: 'published',          // ✅ ننشر مباشرةً، لا draft
       createdAt: now,
       updatedAt: now,
       readingTime: `${minutes} min read`,

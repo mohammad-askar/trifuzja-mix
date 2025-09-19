@@ -4,64 +4,27 @@
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 
-type Locale = 'en' | 'pl';
-
-/** قديم: name كسلسلة — جديد: record */
-type LegacyName = string | Partial<Record<Locale, string>>;
-
 interface Category {
   _id: string;
-  name: LegacyName;
-}
-
-/* --- Helpers آمنة نوعيًا --- */
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null;
-}
-
-function normalizeName(name: LegacyName): Record<Locale, string> {
-  if (typeof name === 'string') {
-    const v = name.trim();
-    return { en: v, pl: v };
-  }
-  const en = typeof name.en === 'string' ? name.en.trim() : '';
-  const pl = typeof name.pl === 'string' ? name.pl.trim() : '';
-  if (en || pl) return { en: en || pl, pl: pl || en };
-
-  // لو كان كائن وفيه مفاتيح أخرى نصية
-  if (isRecord(name)) {
-    const first = Object.values(name).find(
-      (val) => typeof val === 'string' && val.trim().length > 0,
-    ) as string | undefined;
-    const v = (first ?? '').trim();
-    return { en: v, pl: v };
-  }
-  return { en: '', pl: '' };
+  name: string; // ✅ اسم واحد (بولندي)
 }
 
 export default function CategoryChips({
   categories,
   selected,
-  locale,
 }: {
   categories: Category[];
   selected: string[];
-  locale: Locale;
 }) {
   const search = useSearchParams();
 
   // نحافظ على كل البارامترات ونبدّل cat فقط (اختيار مفرد)
-  const buildHref = (catId?: string) => {
+  const buildHref = (catId?: string): string => {
     const params = new URLSearchParams(search.toString());
     params.delete('cat');
     if (catId) params.append('cat', catId);
     const qs = params.toString();
     return qs ? `?${qs}` : '?';
-  };
-
-  const getLabel = (cat: Category) => {
-    const n = normalizeName(cat.name);
-    return n[locale] || n.en || n.pl || cat._id.slice(0, 6);
   };
 
   // نواة مشتركة للشيب
@@ -84,31 +47,28 @@ export default function CategoryChips({
 
   return (
     <div className="my-6 flex flex-wrap items-center justify-center gap-2">
-      {/* All */}
+      {/* All - ثابتة بولندي */}
       <Link
         href={buildHref()}
         className={selected.length === 0 ? active : base}
         aria-current={selected.length === 0 ? 'page' : undefined}
       >
-        {locale === 'pl' ? 'Wszystkie' : 'All'}
+        {'Wszystkie'}
       </Link>
 
       {/* Categories */}
       {categories.map((cat) => {
         const isActive = selected.includes(cat._id);
+        const label = cat.name?.trim() || cat._id.slice(0, 6); // ✅ اسم بولندي فقط
         return (
           <Link
             key={cat._id}
             href={buildHref(cat._id)}
             className={isActive ? active : base}
             aria-pressed={isActive}
-            aria-label={
-              isActive
-                ? `${getLabel(cat)} (active)`
-                : `${getLabel(cat)}`
-            }
+            aria-label={isActive ? `${label} (active)` : label}
           >
-            {getLabel(cat)}
+            {label}
           </Link>
         );
       })}

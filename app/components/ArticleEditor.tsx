@@ -1,3 +1,4 @@
+// E:\trifuzja-mix\app\components\ArticleEditor.tsx
 'use client';
 
 import React, {
@@ -23,9 +24,18 @@ import Image from 'next/image';
 type Locale = 'en' | 'pl';
 type CoverPosition = { x: number; y: number };
 
-interface Category {
+/** شكل التصنيف القادم من الـ API:
+ *  - جديد: name كسلسلة (بولندي)
+ *  - قديم: name ككائن {en?, pl?}
+ */
+type CategoryFromApi =
+  | { _id: string; name: string; slug?: string }
+  | { _id: string; name: Partial<Record<Locale, string>>; slug?: string };
+
+/** الشكل الموحّد للعرض داخل المحرّر */
+interface CategoryUI {
   _id: string;
-  name: Record<Locale, string>;
+  name: string; // دائمًا بولندي (أو fallback)
 }
 
 /* ----------------------------- Translations --------------------------- */
@@ -74,8 +84,21 @@ const fromAny = (
   preferred: Locale,
 ): string => {
   if (typeof val === 'string') return val;
-  return (val?.[preferred] ?? val?.pl ?? val?.en ?? '') as string;
+  return (val?.[preferred] ?? val?.pl ?? val?.en ?? '');
 };
+
+/** تطبيع اسم التصنيف إلى "بولندي فقط" مع fallback */
+function toPolishName(name: CategoryFromApi['name']): string {
+  if (typeof name === 'string') return name.trim();
+  const pl = typeof name.pl === 'string' ? name.pl.trim() : '';
+  if (pl) return pl;
+  const en = typeof name.en === 'string' ? name.en.trim() : '';
+  if (en) return en;
+  const first = Object.values(name).find(
+    (v): v is string => typeof v === 'string' && v.trim().length > 0,
+  );
+  return (first ?? '').trim();
+}
 
 /* ------------------------------ Hooks --------------------------------- */
 export function useDebouncedCallback<A extends unknown[]>(
@@ -98,12 +121,12 @@ function useUpload(locale: Locale, onUrl: (url: string) => void) {
       fd.append('file', files[0]);
       try {
         const r = await fetch('/api/upload', { method: 'POST', body: fd });
-        const { url, error } = (await r.json()) as { url?: string; error?: string };
-        if (!r.ok || !url) throw new Error(error || 'upload');
-        onUrl(url);
+        const parsed = (await r.json()) as { url?: string; error?: string };
+        if (!r.ok || !parsed.url) throw new Error(parsed.error || 'upload');
+        onUrl(parsed.url);
         toast.success(T[locale].uploadOk);
       } catch (err) {
-        toast.error((err as Error).message);
+        toast.error(err instanceof Error ? err.message : 'upload error');
       }
     },
   });
@@ -144,9 +167,8 @@ export default function ArticleEditor({
   const text = T[locale];
 
   const formRef = useRef<HTMLFormElement>(null);
-  const [fabRight, setFabRight] = useState<number>(24); // المسافة من يمين الشاشة لضبط الزر داخل إطار المقال
+  const [fabRight, setFabRight] = useState<number>(24);
 
-  // يحسب إزاحة الزر من يمين الشاشة بحيث يبقى بمحاذاة حدود النموذج (max-w-7xl)
   const updateFabRight = useCallback(() => {
     const rect = formRef.current?.getBoundingClientRect();
     const right = Math.max(16, window.innerWidth - ((rect?.right ?? window.innerWidth)) + 16);
@@ -191,7 +213,8 @@ export default function ArticleEditor({
     return { x: 50, y: 50 };
   });
 
-  const [cats, setCats] = useState<Category[]>([]);
+  /** ✅ التصنيفات بعد التطبيع إلى اسم بولندي كسلسلة */
+  const [cats, setCats] = useState<CategoryUI[]>([]);
   const [loadingCats, setLoadingCats] = useState(false);
   const [saving, setSaving] = useState(false);
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
@@ -208,15 +231,21 @@ export default function ArticleEditor({
   const autoSlug = useMemo(() => makeSlug(titleVal), [titleVal]);
   const visibleSlug = isEdit ? (defaultData.slug as string) : autoSlug;
 
-  // تحميل التصنيفات
+  // ✅ تحميل التصنيفات مع تطبيع الاسم إلى بولندي فقط
   useEffect(() => {
     let mounted = true;
     (async () => {
       setLoadingCats(true);
       try {
+        // يمكنك استخدام /api/admin/categories أيضًا — كلاهما أعدّلناه ليعيد name: string
         const r = await fetch(`/api/categories`);
-        const data: Category[] = await r.json();
-        if (mounted) setCats(data);
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const data = (await r.json()) as CategoryFromApi[];
+        const normalized: CategoryUI[] = data
+          .map((c) => ({ _id: c._id, name: toPolishName(c.name) }))
+          .filter((c) => c.name.length > 0)
+          .sort((a, b) => a.name.localeCompare(b.name, 'pl'));
+        if (mounted) setCats(normalized);
       } catch {
         toast.error('Failed to load categories');
       } finally {
@@ -281,7 +310,7 @@ export default function ArticleEditor({
     }
   }, [handleFocalPointMove]);
 
-  // Autosave (يحفظ كحقول بسيطة بدون لغات)
+  // Autosave (يحفظ كحقول بسيطة بدون لغات) — status دائماً published في الباك إند
   const autosave = useCallback(async () => {
     if (!ready || (!isEdit && slugAvailable === false)) return;
 
@@ -352,7 +381,7 @@ export default function ArticleEditor({
     };
   }, [handleMouseMove, handleMouseUp, handleTouchMove]);
 
-  // Submit (يحفظ حقول بسيطة)
+  // Submit (يحفظ حقول بسيطة) — الباك إند ينشر دائمًا (no draft)
   const onSubmit = async (fv: FormValues) => {
     if (!isEdit && slugAvailable === false) { toast.error(text.slugInUse); return; }
     const slugForSubmit = visibleSlug;
@@ -373,8 +402,8 @@ export default function ArticleEditor({
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
-    const out = await res.json().catch(() => ({}));
-    if (!res.ok) return toast.error((out as { error?: string }).error || 'error');
+    const out = await res.json().catch(() => ({} as { error?: string }));
+    if (!res.ok) return toast.error(out.error || 'error');
     toast.success(isEdit ? text.save : text.create);
     if (!isEdit) {
       onSaved?.(slugForSubmit);
@@ -405,8 +434,6 @@ export default function ArticleEditor({
         </div>
         <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 select-all">
           <span className="rounded bg-gray-100 dark:bg-zinc-800 px-2 py-0.5">/{visibleSlug}</span>
-          {slugAvailable === true && <span className="text-green-600">{text.slugOk}</span>}
-          {slugAvailable === false && <span className="text-red-600">{text.slugInUse}</span>}
         </div>
       </div>
 
@@ -439,7 +466,7 @@ export default function ArticleEditor({
             <option value="">{text.cat}</option>
             {cats.map((c) => (
               <option key={c._id} value={c._id}>
-                {c.name[locale]}
+                {c.name} {/* ✅ اسم بولندي فقط */}
               </option>
             ))}
           </select>

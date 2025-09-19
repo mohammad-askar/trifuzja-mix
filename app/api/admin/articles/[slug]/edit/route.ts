@@ -1,12 +1,39 @@
-// app/api/admin/articles/[slug]/edit/route.ts
+// 📁 app/api/admin/articles/[slug]/edit/route.ts
+export const dynamic = 'force-dynamic';
+
 import { NextRequest, NextResponse } from 'next/server';
 import clientPromise from '@/types/mongodb';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/authOptions';
 import { z } from 'zod';
+import type { ObjectId } from 'mongodb';
 
-/** Next يمرّر params كـ Promise في Route Handlers */
+/* -------------------------------- Types -------------------------------- */
+
 type Ctx = { params: Promise<{ slug: string }> };
+
+interface ArticleDocDb {
+  _id: ObjectId;
+  slug: string;
+  title: string;
+  excerpt?: string;
+  content: string;
+  categoryId?: string;
+  coverUrl?: string;
+  heroImageUrl?: string; // توافقية قديمة
+  videoUrl?: string;
+  status?: 'published';   // لا نستخدم draft
+  createdAt?: Date;
+  updatedAt: Date;
+  readingTime?: string;
+  meta?: Record<string, unknown>;
+}
+
+interface ArticleDocApi extends Omit<ArticleDocDb, '_id'> {
+  _id: string;
+}
+
+/* ------------------------------- Schemas ------------------------------- */
 
 /** مسار مطلق أو يبدأ بـ / */
 const urlOrAppPath = z
@@ -21,7 +48,7 @@ const BodySchema = z.object({
   title: z.string().min(1),
   excerpt: z.string().optional(),
   content: z.string().min(1),
-  categoryId: z.string().optional(),
+  categoryId: z.string().min(1).optional(),
   coverUrl: urlOrAppPath.optional(),
   heroImageUrl: urlOrAppPath.optional(),
   videoUrl: urlOrAppPath.optional(),
@@ -30,6 +57,8 @@ const BodySchema = z.object({
   meta: z.record(z.string(), z.unknown()).optional(),
 });
 type Body = z.infer<typeof BodySchema>;
+
+/* -------------------------------- Helpers ------------------------------ */
 
 type AdminSessionShape =
   | {
@@ -53,54 +82,62 @@ function requireAdmin(session: unknown): session is AdminSessionShape & {
   return role === 'admin';
 }
 
+function responseError(msg: string, status = 400) {
+  return NextResponse.json({ error: msg }, { status });
+}
+
 function toPlainStringReadingTime(rt?: Body['readingTime']): string | undefined {
   if (rt === undefined) return undefined;
   return typeof rt === 'number' ? String(rt) : rt;
 }
 
-/* -------------------------------- GET -------------------------------- */
+/* --------------------------------- GET --------------------------------- */
+
 export async function GET(_req: NextRequest, ctx: Ctx) {
   const { slug } = await ctx.params;
 
   const session = await getServerSession(authOptions);
   if (!requireAdmin(session)) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    return responseError('Unauthorized', 401);
   }
   if (!slug) {
-    return NextResponse.json({ error: 'Slug missing' }, { status: 400 });
+    return responseError('Slug missing', 400);
   }
 
   try {
     const db = (await clientPromise).db();
-    const article = await db.collection('articles').findOne({ slug });
+    const article = await db
+      .collection<ArticleDocDb>('articles')
+      .findOne({ slug });
 
     if (!article) {
-      return NextResponse.json({ error: 'Article not found' }, { status: 404 });
+      return responseError('Article not found', 404);
     }
 
-    return NextResponse.json(article, { status: 200 });
+    const out: ArticleDocApi = { ...article, _id: article._id.toString() };
+    return NextResponse.json(out, { status: 200 });
   } catch (error) {
     console.error('Failed to fetch article:', error);
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+    return responseError('Internal Server Error', 500);
   }
 }
 
-/* -------------------------------- PUT -------------------------------- */
+/* --------------------------------- PUT --------------------------------- */
+
 export async function PUT(req: NextRequest, ctx: Ctx) {
   const { slug } = await ctx.params;
 
   const session = await getServerSession(authOptions);
   if (!requireAdmin(session)) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    return responseError('Unauthorized', 401);
   }
   if (!slug) {
-    return NextResponse.json({ error: 'Slug missing' }, { status: 400 });
+    return responseError('Slug missing', 400);
   }
 
   let data: Body;
   try {
-    const json = await req.json();
-    data = BodySchema.parse(json);
+    data = BodySchema.parse(await req.json());
   } catch (e) {
     return NextResponse.json(
       {
@@ -113,42 +150,51 @@ export async function PUT(req: NextRequest, ctx: Ctx) {
 
   try {
     const db = (await clientPromise).db();
-    const articles = db.collection('articles');
+    const articles = db.collection<ArticleDocDb>('articles');
 
     const unifiedCover = data.coverUrl ?? data.heroImageUrl;
 
-    // نبني $set بدون undefined
-    const set: Record<string, unknown> = {
+    // نبني $set بدون undefined — ونضمن النشر دائمًا
+    const set: Partial<ArticleDocDb> = {
       title: data.title,
       content: data.content,
       updatedAt: new Date(),
       status: 'published', // ننشر دائمًا
     };
+
     if (data.excerpt !== undefined) set.excerpt = data.excerpt;
     if (data.categoryId !== undefined) set.categoryId = data.categoryId;
     if (data.videoUrl !== undefined) set.videoUrl = data.videoUrl;
-    if (data.meta !== undefined) set.meta = data.meta;
+    if (data.meta !== undefined) set.meta = data.meta as Record<string, unknown>;
 
     const rt = toPlainStringReadingTime(data.readingTime);
     if (rt !== undefined) set.readingTime = rt;
 
     if (unifiedCover !== undefined) {
       set.coverUrl = unifiedCover;
-      set.heroImageUrl = unifiedCover;
+      set.heroImageUrl = unifiedCover; // إبقاء الحقل للتوافق
     }
 
-    const updateResult = await articles.updateOne({ slug }, { $set: set });
-    if (updateResult.matchedCount === 0) {
-      return NextResponse.json({ error: 'Article not found' }, { status: 404 });
+    // نعيد الوثيقة المعدلة مباشرةً بدون جلب ثانٍ
+    const updateResult = await articles.findOneAndUpdate(
+      { slug },
+      { $set: set },
+      { returnDocument: 'after' },
+    );
+
+    const updated = updateResult.value;
+    if (!updated) {
+      return responseError('Article not found', 404);
     }
 
-    const updated = await articles.findOne({ slug });
+    const out: ArticleDocApi = { ...updated, _id: updated._id.toString() };
+
     return NextResponse.json(
-      { message: 'Article updated successfully', article: updated },
+      { message: 'Article updated successfully', article: out },
       { status: 200 },
     );
   } catch (error) {
     console.error('Failed to update article:', error);
-    return NextResponse.json({ error: 'Failed to update article' }, { status: 500 });
+    return responseError('Failed to update article', 500);
   }
 }
