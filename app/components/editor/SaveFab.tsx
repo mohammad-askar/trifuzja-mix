@@ -1,3 +1,4 @@
+//E:\trifuzja-mix\app\components\editor\SaveFab.tsx
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
@@ -54,7 +55,7 @@ export default function SaveFab({
 
   return (
     <div
-      className="fixed right-50 z-[40]"
+      className="fixed right-[20px] md:right-[45px] ml:right-[45px] lg:right-[200px] z-[40]"
       style={{ bottom }} // 👈 الارتفاع ديناميكي
     >
       <button
