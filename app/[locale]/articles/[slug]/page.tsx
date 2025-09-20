@@ -1,19 +1,18 @@
 // app/[locale]/articles/[slug]/page.tsx
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import clientPromise from '@/types/mongodb';
 import type { Metadata } from 'next';
 import Image from 'next/image';
 import { Facebook, Twitter, Linkedin } from 'lucide-react';
 import DOMPurify from 'isomorphic-dompurify';
 import VideoEmbed from '@/app/components/video/VideoEmbed';
+
 export const revalidate = 0;
 
 type Locale = 'en' | 'pl';
 type Status = 'draft' | 'published';
 type LegacyCover = 'top' | 'center' | 'bottom';
 type CoverPosition = { x: number; y: number };
-
-// 👇 ندعم الشكلين: string (الجديد) أو record (القديم)
 type MaybeI18n = string | Record<string, string> | undefined;
 
 interface ArticleDoc {
@@ -24,7 +23,7 @@ interface ArticleDoc {
   content?: MaybeI18n;
   coverUrl?: string;
   videoUrl?: string;
-  status?: Status;                // قد تكون غير موجودة في بعض الوثائق القديمة
+  status?: Status;
   createdAt: Date;
   updatedAt: Date;
   readingTime?: string;
@@ -34,8 +33,7 @@ interface ArticleDoc {
   };
 }
 
-/* ----------------------- helpers ----------------------- */
-// تلتقط من string مباشرة، وإن كان Record تختار حسب اللغة ثم أي قيمة متاحة
+/* Helpers */
 function pick(field: MaybeI18n, locale: Locale): string {
   if (!field) return '';
   if (typeof field === 'string') return field;
@@ -58,7 +56,6 @@ function absoluteUrl(pathOrUrl: string): string {
 
 async function fetchArticle(slug: string) {
   const db = (await clientPromise).db();
-  // ندعم القديم الذي لا يملك status (نعتبره منشورًا)
   return db
     .collection<ArticleDoc>('articles')
     .findOne({ slug, $or: [{ status: 'published' }, { status: { $exists: false } }] });
@@ -68,7 +65,6 @@ function stripHtml(html: string): string {
   return html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
-// احتفظنا بها لو أردت لاحقًا تعديل عرض الصور داخل المحتوى
 function normalizeImageWidths(html: string): string {
   return html;
 }
@@ -78,12 +74,14 @@ function toCoverXY(pos?: CoverPosition | LegacyCover): CoverPosition {
   if (typeof pos === 'string') {
     if (pos === 'top') return { x: 50, y: 0 };
     if (pos === 'bottom') return { x: 50, y: 100 };
-    return { x: 50, y: 50 }; // center
+    return { x: 50, y: 50 };
   }
-  return {
-    x: Math.max(0, Math.min(100, pos.x)),
-    y: Math.max(0, Math.min(100, pos.y)),
-  };
+  return { x: Math.max(0, Math.min(100, pos.x)), y: Math.max(0, Math.min(100, pos.y)) };
+}
+
+/** Detect “pasted URL as slug” patterns (youtube, youtu.be, shorts, etc.) */
+function looksLikeUrlSlug(s: string): boolean {
+  return /^(https?:|www\.|https?-|www-)|youtube|youtu(?:-be)?|shorts/.test(s);
 }
 
 /* ----------------------- Metadata ------------------------ */
@@ -91,10 +89,11 @@ export async function generateMetadata(
   { params }: { params: Promise<{ locale: Locale; slug: string }> }
 ): Promise<Metadata> {
   const { slug, locale } = await params;
-  const art = await fetchArticle(slug);
 
+  // Try the DB first. If no article, mark as noindex.
+  const art = await fetchArticle(slug);
   if (!art) {
-    return { title: 'Not Found', robots: { index: false } };
+    return { title: 'Not Found', robots: { index: false, follow: false } };
   }
 
   const title = pick(art.title, locale);
@@ -128,8 +127,17 @@ export default async function ArticlePage(
   { params }: { params: Promise<{ locale: Locale; slug: string }> }
 ) {
   const { locale, slug } = await params;
+
+  // 1) Try to load the article
   const art = await fetchArticle(slug);
-  if (!art) notFound();
+
+  // 2) If not found and slug looks like a pasted URL -> send to Videos
+  if (!art) {
+    if (looksLikeUrlSlug(slug)) {
+      redirect(`/${locale}/videos`);
+    }
+    notFound();
+  }
 
   const title = pick(art.title, locale);
   const excerpt = pick(art.excerpt, locale);
@@ -236,11 +244,10 @@ export default async function ArticlePage(
           )}
 
           {art.videoUrl && (
-  <div className="my-10 aspect-video rounded-lg overflow-hidden shadow-md ring-1 ring-gray-100 dark:ring-zinc-800">
-    <VideoEmbed url={art.videoUrl} title={title} noCookie className="w-full h-full" />
-  </div>
-)}
-
+            <div className="my-10 aspect-video rounded-lg overflow-hidden shadow-md ring-1 ring-gray-100 dark:ring-zinc-800">
+              <VideoEmbed url={art.videoUrl} title={title} noCookie className="w-full h-full" />
+            </div>
+          )}
 
           {bodySafe ? (
             <section

@@ -16,6 +16,7 @@ interface ArticleSummary {
   readingTime?: string;
   meta?: { coverPosition?: CoverPos };
   isVideoOnly?: boolean;
+  videoUrl?: string; // ✅ جديد: لازم علشان نطلع thumbnail يوتيوب في الكارت
 }
 
 interface Props {
@@ -106,7 +107,7 @@ export default function ArticlesList({ catsParam }: Props) {
     return () => controller.abort();
   }, [cats]);
 
-  // --- ⬇️ لفّ دالة التحميل بـ useCallback وأدرجها في deps ---
+  // تحميل المزيد
   const moreAbort = useRef<AbortController | null>(null);
   const loadingMoreRef = useRef(false);
 
@@ -146,11 +147,10 @@ export default function ArticlesList({ catsParam }: Props) {
         loadingMoreRef.current = false;
       }
     },
-    [cats, page, hasMore, autoPages, items.length], // ← اعتمادات صحيحة
+    [cats, page, hasMore, autoPages, items.length],
   );
-  // --- ⬆️ ---
 
-  // المراقب (تمرير تلقائي) — الآن نُضمِّن loadNextPage في deps
+  // مراقب التمرير
   const sentinel = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!sentinel.current) return;
@@ -162,14 +162,14 @@ export default function ArticlesList({ catsParam }: Props) {
         const hit = entries[0]?.isIntersecting ?? false;
         if (!hit) return;
         if (loadingMoreRef.current) return;
-        void loadNextPage(); // تلقائي
+        void loadNextPage();
       },
       { rootMargin: '300px', threshold: 0.1 },
     );
 
     io.observe(sentinel.current);
     return () => io.disconnect();
-  }, [hasMore, autoPages, loadNextPage]); // ✅ التحذير انتهى
+  }, [hasMore, autoPages, loadNextPage]);
 
   const Skel = () => (
     <div className="rounded-2xl overflow-hidden bg-zinc-200 dark:bg-zinc-800 animate-pulse h-72" />

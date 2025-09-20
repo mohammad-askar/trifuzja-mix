@@ -7,10 +7,10 @@ import { Swiper, SwiperSlide } from 'swiper/react';
 import { Pagination, Autoplay } from 'swiper/modules';
 import 'swiper/css';
 import 'swiper/css/pagination';
+import { getYouTubeThumb } from '@/utils/youtube'; // ✅ جديد
 
 type Locale = 'en' | 'pl';
 
-/* دعم موضع القص القادم من الـ API (اختياري) */
 type LegacyCoverPos = 'top' | 'center' | 'bottom';
 type CoverPosition = { x: number; y: number };
 
@@ -20,8 +20,9 @@ interface ArticleMini {
   title: string;
   excerpt?: string;
   coverUrl?: string;
+  videoUrl?: string; // ✅ جديد
   meta?: { coverPosition?: LegacyCoverPos | CoverPosition };
-  isVideoOnly?: boolean; // ✅ لإظهار الشارة عند مقالات الفيديو فقط
+  isVideoOnly?: boolean;
 }
 
 /* Helpers */
@@ -65,7 +66,7 @@ export default function LatestArticlesSlider({
     );
   }
 
-  const CARD_H = 340; // ارتفاع البطاقة
+  const CARD_H = 340;
 
   return (
     <section className="max-w-6xl mx-auto px-4 pt-12 pb-20">
@@ -84,7 +85,9 @@ export default function LatestArticlesSlider({
         }}
       >
         {articles.map((a, idx) => {
-          const img = normalizeSrc(a.coverUrl);
+          // ✅ استخدم thumbnail يوتيوب أولاً إن وُجد videoUrl
+          const ytThumb = a.videoUrl ? getYouTubeThumb(a.videoUrl) : null;
+          const img = ytThumb ?? normalizeSrc(a.coverUrl);
           const objectPosition = toObjectPosition(a.meta?.coverPosition);
 
           return (
@@ -107,8 +110,8 @@ export default function LatestArticlesSlider({
                       style={{ objectPosition }}
                     />
 
-                    {/* شارة الفيديو الحمراء — فقط عند Video-only */}
-                    {a.isVideoOnly && (
+                    {/* شارة الفيديو */}
+                    {(a.isVideoOnly || a.videoUrl) && (
                       <span
                         className="absolute left-2 top-2 rounded-full bg-rose-500 px-2 py-0.5 text-[10px] font-semibold text-white shadow ring-1 ring-white/15"
                         aria-label={locale === 'pl' ? 'Wideo' : 'Video'}
