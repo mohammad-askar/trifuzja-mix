@@ -1,16 +1,38 @@
-//E:\trifuzja-mix\app\[locale]\admin\dashboard\page.tsx
+// E:\trifuzja-mix\app\[locale]\admin\dashboard\page.tsx
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Home, FolderKanban, Newspaper } from 'lucide-react';
 
 type Locale = 'en' | 'pl';
 
+/* ---------- Metadata ---------- */
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: Locale }>;
+}): Promise<Metadata> {
+  const { locale } = await params;
+  const isPL = locale === 'pl';
+  return {
+    title: isPL
+      ? 'Panel administracyjny | Initiativa Autonoma'
+      : 'Admin Dashboard | Initiativa Autonoma',
+    alternates: {
+      languages: {
+        en: '/en/admin/dashboard',
+        pl: '/pl/admin/dashboard',
+      },
+    },
+  };
+}
+
 /** Admin dashboard (Server Component) */
 export default async function AdminDashboard({
   params,
 }: {
-  params: Promise<{ locale: Locale }>;   // 🔹 params هو Promise
+  params: Promise<{ locale: Locale }>;
 }) {
-  const { locale } = await params;       // 🔹 فكّ الـ Promise هنا
+  const { locale } = await params;
 
   return (
     <main className="min-h-[calc(100vh-64px)] flex items-center justify-center">
