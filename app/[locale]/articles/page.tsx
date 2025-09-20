@@ -5,7 +5,7 @@ import CategoryChips from '@/app/components/CategoryChips';
 import ArticlesList from '@/app/components/ArticlesList';
 import clientPromise from '@/types/mongodb';
 import type { ObjectId } from 'mongodb';
-
+import type { Metadata } from 'next';
 type Locale = 'en' | 'pl';
 
 type Props = {
@@ -24,6 +24,36 @@ interface CategoryUi {
   _id: string;
   // اسم واحد (بولندي)
   name: string;
+}
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: Locale }>;
+}): Promise<Metadata> {
+  const { locale } = await params;
+  const titlePart = locale === 'pl' ? 'Artykuły' : 'Articles';
+
+  return {
+    title: `${titlePart} | Initiativa Autonoma`,
+    description:
+      locale === 'pl'
+        ? 'Przeglądaj najnowsze artykuły w Initiativa Autonoma.'
+        : 'Browse the latest articles on Initiativa Autonoma.',
+    openGraph: {
+      title: `${titlePart} | Initiativa Autonoma`,
+      description:
+        locale === 'pl'
+          ? 'Przeglądaj najnowsze artykuły w Initiativa Autonoma.'
+          : 'Browse the latest articles on Initiativa Autonoma.',
+    },
+    alternates: {
+      languages: {
+        en: '/en/articles',
+        pl: '/pl/articles',
+      },
+    },
+  };
 }
 
 /* ---------------------------- Helpers ----------------------------- */

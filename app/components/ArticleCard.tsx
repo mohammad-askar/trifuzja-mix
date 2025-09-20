@@ -20,6 +20,7 @@ interface Article {
   coverUrl?: string;
   readingTime?: string;
   meta?: ArticleMeta;
+  isVideoOnly?: boolean; // ✅ لإظهار شارة الفيديو عند الحاجة
 }
 
 interface Props {
@@ -94,10 +95,22 @@ export default function ArticleCard({ article, locale, priority = false }: Props
           className="object-cover transition-transform duration-300 group-hover:scale-105"
           style={{ objectPosition }}
         />
+
+        {/* شريط تدرّج خفيف + العنوان */}
         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/25 to-transparent pointer-events-none" />
         <h3 className="absolute bottom-3 left-4 right-4 text-base sm:text-lg font-semibold text-white leading-snug line-clamp-2 drop-shadow">
           {title || '—'}
         </h3>
+
+        {/* ✅ شارة الفيديو الحمراء — فقط إن كان Video-only */}
+        {article.isVideoOnly && (
+          <span
+            className="absolute left-2 top-2 rounded-full bg-rose-500 px-2 py-0.5 text-[10px] font-semibold text-white shadow ring-1 ring-white/15"
+            aria-label={locale === 'pl' ? 'Wideo' : 'Video'}
+          >
+            {locale === 'pl' ? 'Wideo' : 'Video'}
+          </span>
+        )}
 
         {article.readingTime && (
           <span className="absolute top-2 left-2 bg-black/60 text-white text-xs px-2 py-1 rounded-full backdrop-blur-sm">

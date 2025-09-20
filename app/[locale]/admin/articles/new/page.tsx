@@ -241,7 +241,7 @@ export default function NewArticlePage() {
 
   // الصفحة
   return (
-    <main className="max-w-4xl mx-auto px-4 py-10">
+    <main className="max-w-4xl mx-auto px-4 py-8">
       <PageHeader
         title={title}
         subtitle={subtitle}
@@ -250,7 +250,7 @@ export default function NewArticlePage() {
       />
 
       <section
-        className="rounded-xl border border-gray-200 dark:border-zinc-700 bg-white/70 dark:bg-zinc-900/70 p-3 md:p-4"
+        className="rounded-xl border border-gray-200 dark:border-zinc-700 bg-white/70 dark:bg-zinc-900/70"
         aria-labelledby="editor-section"
       >
         <h2 id="editor-section" className="sr-only">
@@ -258,7 +258,7 @@ export default function NewArticlePage() {
         </h2>
 
         {/* غلاف بسيط مع padding داخلي للمحرّر */}
-        <div className="editor-host rounded-lg p-3 md:p-4">
+        <div className="editor-host rounded-lg">
           <Suspense fallback={<EditorSkeleton hint={editorLoading} />}>
             <ArticleEditor
               mode="create"
@@ -281,8 +281,9 @@ export default function NewArticlePage() {
           </Suspense>
         </div>
 
-        {/* CSS لإخفاء عناصر Page/Status داخل ArticleEditor بدون تعديل داخلي */}
+        {/* CSS: اجبار التولبار داخل المحرّر أن يكون sticky داخل .editor-host */}
         <style jsx global>{`
+          /* أخفي حقول الصفحات/الحالة كما كان */
           .editor-host [data-field='page'],
           .editor-host [data-field='status'],
           .editor-host [name='page'],
@@ -298,6 +299,51 @@ export default function NewArticlePage() {
           .editor-host fieldset.page,
           .editor-host fieldset.status {
             display: none !important;
+          }
+
+          /* ====== شريط الأدوات (القائمة) داخل المحرّر ====== */
+          .editor-host {
+            position: relative;
+            overflow: visible; /* نضمن أن sticky يشتغل حسب الحاوية */
+          }
+
+          /* نستهدف أكثر من شكل للتولبار */
+          .editor-host [data-toolbar],
+          .editor-host [role='toolbar'],
+          .editor-host .editor-toolbar,
+          .editor-host [class*='toolbar'] {
+            position: sticky !important;
+            top: 0; /* يثبت عند أعلى مساحة المحرر */
+            z-index: 30;
+            background: rgba(255, 255, 255, 0.85);
+            -webkit-backdrop-filter: saturate(120%) blur(6px);
+            backdrop-filter: saturate(120%) blur(6px);
+            border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+          }
+
+          /* ثيم داكن */
+          :root.dark .editor-host [data-toolbar],
+          :root.dark .editor-host [role='toolbar'],
+          :root.dark .editor-host .editor-toolbar,
+          :root.dark .editor-host [class*='toolbar'] {
+            background: rgba(24, 24, 27, 0.8);
+            border-bottom-color: rgba(255, 255, 255, 0.08);
+          }
+
+          /* لو مساحة المحتوى تبدأ مباشرة بعد التولبار، نضيف padding علشان ما يتغطّى */
+          .editor-host .editor-content,
+          .editor-host [data-editor-content] {
+            scroll-margin-top: 56px;
+            padding-top: 8px;
+          }
+
+          /* في حال كان التولبار أصلاً fixed من داخل المحرر، نلغيه */
+          .editor-host [data-toolbar],
+          .editor-host [role='toolbar'],
+          .editor-host .editor-toolbar,
+          .editor-host [class*='toolbar'] {
+            position: sticky !important;
+            inset: auto !important; /* ألغِ أي bottom/right/left */
           }
         `}</style>
       </section>

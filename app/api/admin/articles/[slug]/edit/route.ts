@@ -17,13 +17,14 @@ interface ArticleDocDb {
   slug: string;
   title: string;
   excerpt?: string;
-  content?: string;          // ← صارت اختيارية لدعم videoOnly
+  content?: string;          // optional to support video-only
   categoryId?: string;
   coverUrl?: string;
-  heroImageUrl?: string;     // توافقية قديمة
+  heroImageUrl?: string;     // legacy mirror
   videoUrl?: string;
-  videoOnly?: boolean;       // ← جديد
-  status?: 'published';      // لا نستخدم draft
+  videoOnly?: boolean;       // internal
+  isVideoOnly?: boolean;     // public API compat
+  status?: 'published';
   createdAt?: Date;
   updatedAt: Date;
   readingTime?: string;
@@ -36,7 +37,7 @@ interface ArticleDocApi extends Omit<ArticleDocDb, '_id'> {
 
 /* ------------------------------- Schemas ------------------------------- */
 
-/** مسار مطلق أو يبدأ بـ / */
+// Absolute URL or app path
 const urlOrAppPath = z
   .string()
   .min(1)
@@ -44,41 +45,48 @@ const urlOrAppPath = z
     message: 'Must be an absolute URL or a path starting with "/"',
   });
 
-/** حمولة حفظ المقال — حقول مسطّحة (بولندية فقط) */
+// Monolingual + video-only support
 const BodySchema = z
   .object({
-    title: z.string().min(1),
-    excerpt: z.string().optional(),
-    content: z.string().optional(),         // ← لم تعد إلزامية هنا
-    categoryId: z.string().min(1).optional(),
+    title: z.string().trim().min(1),
+    excerpt: z.string().trim().optional(),
+    content: z.string().trim().optional(),       // not required here
+    categoryId: z.string().trim().optional(),    // conditionally required
     coverUrl: urlOrAppPath.optional(),
     heroImageUrl: urlOrAppPath.optional(),
     videoUrl: urlOrAppPath.optional(),
-    videoOnly: z.boolean().optional(),      // ← جديد
-    // نقبل رقمًا أو نصًا ونخزّنه كنص
-    readingTime: z.union([z.number().int().nonnegative(), z.string().min(1)]).optional(),
+    videoOnly: z.boolean().optional(),
+    isVideoOnly: z.boolean().optional(),
+    readingTime: z.union([z.number().int().nonnegative(), z.string().trim().min(1)]).optional(),
     meta: z.record(z.string(), z.unknown()).optional(),
   })
   .superRefine((data, ctx) => {
-    const isVideo = data.videoOnly === true;
+    const isVideo = (data.videoOnly ?? data.isVideoOnly) === true;
 
-    // شرط: إن كان فيديو فقط → videoUrl مطلوب
-    if (isVideo && !data.videoUrl) {
-      ctx.addIssue({
-        path: ['videoUrl'],
-        code: z.ZodIssueCode.custom,
-        message: 'videoUrl is required when videoOnly is true',
-      });
-    }
-
-    // شرط: إن لم يكن فيديو فقط → content مطلوب وغير فارغ
-    if (!isVideo) {
-      const c = (data.content ?? '').trim();
+    if (isVideo) {
+      // video-only: require videoUrl; no need for content/categoryId
+      if (!data.videoUrl) {
+        ctx.addIssue({
+          path: ['videoUrl'],
+          code: z.ZodIssueCode.custom,
+          message: 'videoUrl is required when videoOnly is true',
+        });
+      }
+    } else {
+      // text: require non-empty content and categoryId
+      const c = (data.content ?? '').replace(/<[^>]+>/g, '').trim();
       if (!c) {
         ctx.addIssue({
           path: ['content'],
           code: z.ZodIssueCode.custom,
           message: 'content is required when videoOnly is false',
+        });
+      }
+      if (!data.categoryId || data.categoryId.trim() === '') {
+        ctx.addIssue({
+          path: ['categoryId'],
+          code: z.ZodIssueCode.custom,
+          message: 'categoryId is required when videoOnly is false',
         });
       }
     }
@@ -89,9 +97,7 @@ type Body = z.infer<typeof BodySchema>;
 /* -------------------------------- Helpers ------------------------------ */
 
 type AdminSessionShape =
-  | {
-      user?: { role?: string | null } | null;
-    }
+  | { user?: { role?: string | null } | null }
   | null
   | undefined;
 
@@ -99,7 +105,6 @@ function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null;
 }
 
-/** حارس نوعي بدون any */
 function requireAdmin(session: unknown): session is AdminSessionShape & {
   user: { role: string };
 } {
@@ -119,30 +124,30 @@ function toPlainStringReadingTime(rt?: Body['readingTime']): string | undefined 
   return typeof rt === 'number' ? String(rt) : rt;
 }
 
+function computeReadingTimeFromHtml(html?: string) {
+  if (!html) return undefined;
+  const words = html.replace(/<[^>]+>/g, ' ').trim().split(/\s+/).filter(Boolean).length;
+  const minutes = Math.max(1, Math.ceil(words / 200));
+  return `${minutes} min read`;
+}
+
 /* --------------------------------- GET --------------------------------- */
 
 export async function GET(_req: NextRequest, ctx: Ctx) {
   const { slug } = await ctx.params;
 
   const session = await getServerSession(authOptions);
-  if (!requireAdmin(session)) {
-    return responseError('Unauthorized', 401);
-  }
-  if (!slug) {
-    return responseError('Slug missing', 400);
-  }
+  if (!requireAdmin(session)) return responseError('Unauthorized', 401);
+  if (!slug) return responseError('Slug missing', 400);
 
   try {
     const db = (await clientPromise).db();
-    const article = await db
-      .collection<ArticleDocDb>('articles')
-      .findOne({ slug });
+    const article = await db.collection<ArticleDocDb>('articles').findOne({ slug });
 
-    if (!article) {
-      return responseError('Article not found', 404);
-    }
+    if (!article) return responseError('Article not found', 404);
 
-    const out: ArticleDocApi = { ...article, _id: article._id.toString() };
+    const flag = article.videoOnly ?? article.isVideoOnly ?? false;
+    const out: ArticleDocApi = { ...article, videoOnly: flag, isVideoOnly: flag, _id: article._id.toString() };
     return NextResponse.json(out, { status: 200 });
   } catch (error) {
     console.error('Failed to fetch article:', error);
@@ -156,12 +161,8 @@ export async function PUT(req: NextRequest, ctx: Ctx) {
   const { slug } = await ctx.params;
 
   const session = await getServerSession(authOptions);
-  if (!requireAdmin(session)) {
-    return responseError('Unauthorized', 401);
-  }
-  if (!slug) {
-    return responseError('Slug missing', 400);
-  }
+  if (!requireAdmin(session)) return responseError('Unauthorized', 401);
+  if (!slug) return responseError('Slug missing', 400);
 
   let data: Body;
   try {
@@ -181,47 +182,65 @@ export async function PUT(req: NextRequest, ctx: Ctx) {
     const articles = db.collection<ArticleDocDb>('articles');
 
     const unifiedCover = data.coverUrl ?? data.heroImageUrl;
+    const isVideo = (data.videoOnly ?? data.isVideoOnly) === true;
 
-    // نبني $set بدون undefined — ونضمن النشر دائمًا
+    // build $set
     const set: Partial<ArticleDocDb> = {
       title: data.title,
       updatedAt: new Date(),
-      status: 'published', // ننشر دائمًا
+      status: 'published',
+      videoOnly: isVideo,
+      isVideoOnly: isVideo,
     };
 
-    // محتوى/ملخص/تصنيف (تُرسل فقط عند التغيير)
-    if (data.content !== undefined) set.content = data.content;
-    if (data.excerpt !== undefined) set.excerpt = data.excerpt;
-    if (data.categoryId !== undefined) set.categoryId = data.categoryId;
-
-    // فيديو
-    if (data.videoUrl !== undefined) set.videoUrl = data.videoUrl;
-    if (data.videoOnly !== undefined) set.videoOnly = data.videoOnly;
-
-    // ميتا ووقت قراءة
+    if (data.excerpt !== undefined) set.excerpt = data.excerpt || undefined;
+    if (data.content !== undefined) set.content = data.content || undefined;
+    if (data.videoUrl !== undefined) set.videoUrl = data.videoUrl || undefined;
     if (data.meta !== undefined) set.meta = data.meta as Record<string, unknown>;
-    const rt = toPlainStringReadingTime(data.readingTime);
-    if (rt !== undefined) set.readingTime = rt;
 
-    // صورة الغلاف (مع إبقاء heroImageUrl للتوافق)
-    if (unifiedCover !== undefined) {
-      set.coverUrl = unifiedCover;
-      set.heroImageUrl = unifiedCover;
+    // readingTime: only keep/compute for text posts
+    const rt = toPlainStringReadingTime(data.readingTime);
+    if (!isVideo) {
+      if (rt !== undefined) {
+        set.readingTime = rt;
+      } else if (data.content) {
+        const computed = computeReadingTimeFromHtml(data.content);
+        if (computed) set.readingTime = computed;
+      }
     }
 
-    // نعيد الوثيقة المعدلة مباشرةً بدون جلب ثانٍ
+    // categoryId: allow clearing via "", and remove entirely for video-only if not provided
+    if (data.categoryId !== undefined) {
+      const cat = data.categoryId.trim();
+      set.categoryId = cat === '' ? undefined : cat;
+    }
+
+    if (unifiedCover !== undefined) {
+      set.coverUrl = unifiedCover;
+      set.heroImageUrl = unifiedCover; // legacy mirror
+    }
+
+    // $unset for cleanup when switching to video-only
+    const unset: Record<string, ''> = {};
+    if (isVideo) {
+      if (data.categoryId === undefined || data.categoryId.trim() === '') unset.categoryId = '';
+      if (!data.content || data.content.trim() === '') {
+        unset.content = '';
+        unset.readingTime = '';
+      }
+    }
+
     const updateResult = await articles.findOneAndUpdate(
       { slug },
-      { $set: set },
+      { $set: set, ...(Object.keys(unset).length ? { $unset: unset } : {}) },
       { returnDocument: 'after' },
     );
 
     const updated = updateResult.value;
-    if (!updated) {
-      return responseError('Article not found', 404);
-    }
+    if (!updated) return responseError('Article not found', 404);
 
-    const out: ArticleDocApi = { ...updated, _id: updated._id.toString() };
+    const flag = updated.videoOnly ?? updated.isVideoOnly ?? false;
+    const out: ArticleDocApi = { ...updated, videoOnly: flag, isVideoOnly: flag, _id: updated._id.toString() };
 
     return NextResponse.json(
       { message: 'Article updated successfully', article: out },

@@ -1,166 +1,28 @@
 'use client';
 
-import React, {
-  useState,
-  useEffect,
-  useMemo,
-  useRef,
-  useCallback,
-  KeyboardEvent,
-  MouseEvent as ReactMouseEvent,
-} from 'react';
+import React, { useState, useEffect, useMemo, useCallback, KeyboardEvent } from 'react';
 import { useForm } from 'react-hook-form';
-import slugify from 'slugify';
-import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import toast from 'react-hot-toast';
-import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
-import { useDropzone } from 'react-dropzone';
-// ⛔️ لم نعد نستخدم Image هنا (موجود داخل CoverPreview)
-// import Image from 'next/image';
 
-/* مكوّناتك الجديدة */
-import VideoOnlyToggle from '@/app/components/editor/VideoOnlyToggle';
-import CoverPreview from '@/app/components/editor/CoverPreview';
+import SaveFab from '@/app/components/editor/SaveFab';
+import TitleSlug from '@/app/components/editor/TitleSlug';
+import Excerpt from '@/app/components/editor/Excerpt';
+import CategorySelect from '@/app/components/editor/CategorySelect';
+import VideoSection from '@/app/components/editor/VideoSection';
+import EditorBox from '@/app/components/editor/EditorBox';
+import CoverUploader from '@/app/components/editor/CoverUploader';
+import StatusBar from '@/app/components/editor/StatusBar';
 
-/* ------------------------------- Types -------------------------------- */
-type Locale = 'en' | 'pl';
-type CoverPosition = { x: number; y: number };
+import type { Locale, CoverPosition } from '@/app/components/editor/article.types';
+import { T } from '@/app/components/editor/i18n';
+import { ArticleFormSchema as schema, type ArticleFormValues as FormValues } from '@/app/components/editor/article.schema';
+import { makeSlug, readingTimeFromHtml, lenGT3, fromAny } from '@/app/components/editor/helpers';
+import { useDebouncedCallback } from '@/app/components/editor/hooks';
 
-/** شكل التصنيف القادم من الـ API:
- *  - جديد: name كسلسلة (بولندي)
- *  - قديم: name ككائن {en?, pl?}
- */
-type CategoryFromApi =
-  | { _id: string; name: string; slug?: string }
-  | { _id: string; name: Partial<Record<Locale, string>>; slug?: string };
-
-/** الشكل الموحّد للعرض داخل المحرّر */
-interface CategoryUI {
-  _id: string;
-  name: string; // دائمًا بولندي (أو fallback)
-}
-
-/* ----------------------------- Translations --------------------------- */
-const T = {
-  en: {
-    title: 'Title', excerpt: 'Summary', slug: 'Slug', cat: 'Category', cover: 'Cover',
-    save: 'Save', create: 'Create',
-    imgDrag: 'Click or drag', imgDrop: 'Drop here',
-    words: 'words', unsaved: 'Unsaved',
-    uploadOk: 'Image uploaded', loading: 'Loading…', saving: 'Saving…',
-    savedAt: (t: string) => `Saved ${t}`, slugOk: '✓ slug available', slugInUse: 'Slug in use',
-    readTime: 'min read', pressToSave: 'Press Ctrl/Cmd + S to save',
-    /* جديد */
-    videoOnly: 'Video only (no text content)',
-    videoOnlyHint: 'This article will appear under the Videos section and hide the text editor.',
-    videoUrlLabel: 'Video URL',
-  },
-  pl: {
-    title: 'Tytuł', excerpt: 'Opis', slug: 'Slug', cat: 'Kategoria', cover: 'Grafika',
-    save: 'Zapisz', create: 'Utwórz',
-    imgDrag: 'Kliknij lub przeciągnij', imgDrop: 'Upuść tutaj',
-    words: 'słów', unsaved: 'Niezapisane',
-    uploadOk: 'Załadowano obraz', loading: 'Ładowanie…', saving: 'Zapisywanie…',
-    savedAt: (t: string) => `Zapisano o ${t}`, slugOk: '✓ slug dostępny', slugInUse: 'Slug zajęty',
-    readTime: 'min czytania', pressToSave: 'Wciśnij Ctrl/Cmd + S aby zapisać',
-    /* جديد */
-    videoOnly: 'Tylko wideo (bez treści)',
-    videoOnlyHint: 'Artykuł trafi do sekcji Wideo i ukryje edytor tekstu.',
-    videoUrlLabel: 'Link do wideo',
-  },
-} as const;
-
-/* ------------------------------ Form Schema --------------------------- */
-const schema = z.object({
-  title: z.string().trim().min(4, 'Too small: expected >3 characters').max(140),
-  excerpt: z.string().trim().min(4, 'Too small: expected >3 characters').max(400),
-  categoryId: z.string().trim().min(1, 'Please pick a category'),
-  videoUrl: z.string().url().optional().or(z.literal('')),
-});
-type FormValues = z.infer<typeof schema>;
-
-/* ------------------------------ Helpers ------------------------------- */
-const makeSlug = (s: string) => slugify(s, { lower: true, strict: true });
-const readingTimeFromHtml = (html: string, unit: string) => {
-  const words = html.replace(/<[^>]+>/g, ' ').trim().split(/\s+/).filter(Boolean).length;
-  const minutes = Math.max(1, Math.ceil(words / 200));
-  return `${minutes} ${unit}`;
-};
-const lenGT3 = (s: string) => s.trim().length > 3;
-
-// يقبل حقول قديمة (Record<Locale,string>) أو الجديدة (string)
-const fromAny = (
-  val: string | Record<Locale, string> | undefined,
-  preferred: Locale,
-): string => {
-  if (typeof val === 'string') return val;
-  return (val?.[preferred] ?? val?.pl ?? val?.en ?? '');
-};
-
-/** تطبيع اسم التصنيف إلى "بولندي فقط" مع fallback */
-function toPolishName(name: CategoryFromApi['name']): string {
-  if (typeof name === 'string') return name.trim();
-  const pl = typeof name.pl === 'string' ? name.pl.trim() : '';
-  if (pl) return pl;
-  const en = typeof name.en === 'string' ? name.en.trim() : '';
-  if (en) return en;
-  const first = Object.values(name).find(
-    (v): v is string => typeof v === 'string' && v.trim().length > 0,
-  );
-  return (first ?? '').trim();
-}
-
-/** هل المحتوى فعليًا فارغ (بعد نزع الوسوم)؟ */
-const isEffectivelyEmpty = (html?: string): boolean =>
-  (html ?? '')
-    .replace(/<[^>]+>/g, ' ')
-    .trim()
-    .replace(/\s+/g, ' ')
-    .length <= 20;
-
-/* ------------------------------ Hooks --------------------------------- */
-export function useDebouncedCallback<A extends unknown[]>(
-  fn: (...args: A) => void,
-  delay = 1000,
-) {
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
-  return useCallback((...args: A) => {
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => { fn(...args); }, delay);
-  }, [fn, delay]);
-}
-
-function useUpload(locale: Locale, onUrl: (url: string) => void) {
-  return useDropzone({
-    onDrop: async (files: File[]) => {
-      if (!files[0]) return;
-      const fd = new FormData();
-      fd.append('file', files[0]);
-      try {
-        const r = await fetch('/api/upload', { method: 'POST', body: fd });
-        const parsed = (await r.json()) as { url?: string; error?: string };
-        if (!r.ok || !parsed.url) throw new Error(parsed.error || 'upload');
-        onUrl(parsed.url);
-        toast.success(T[locale].uploadOk);
-      } catch (err) {
-        toast.error(err instanceof Error ? err.message : 'upload error');
-      }
-    },
-  });
-}
-
-/* --------------------------- Dynamic TipTap --------------------------- */
-const TipTap = dynamic(() => import('@/app/components/TipTapEditor'), {
-  ssr: false,
-  loading: () => <div className="h-40 rounded border animate-pulse" />,
-});
-
-/* --------------------------- Component Props -------------------------- */
 interface Props {
-  locale: Locale;               // واجهة الإدارة فقط
+  locale: Locale;
   mode: 'create' | 'edit';
   defaultData?: Partial<{
     slug: string;
@@ -170,42 +32,20 @@ interface Props {
     categoryId: string;
     coverUrl: string;
     videoUrl: string;
-    meta?: {
-      coverPosition?: 'top' | 'center' | 'bottom' | CoverPosition;
-      [key: string]: unknown;
-    };
+    meta?: { coverPosition?: 'top' | 'center' | 'bottom' | CoverPosition; [k: string]: unknown };
   }>;
   onSaved?: (slug: string) => void;
 }
 
-/* ----------------------------- Component ------------------------------ */
-export default function ArticleEditor({
-  locale, mode, defaultData = {}, onSaved,
-}: Props) {
+export default function ArticleEditor({ locale, mode, defaultData = {}, onSaved }: Props) {
   const router = useRouter();
   const isEdit = mode === 'edit';
   const text = T[locale];
 
-  const formRef = useRef<HTMLFormElement>(null);
-  const [fabRight, setFabRight] = useState<number>(24);
-
-  const updateFabRight = useCallback(() => {
-    const rect = formRef.current?.getBoundingClientRect();
-    const right = Math.max(16, window.innerWidth - ((rect?.right ?? window.innerWidth)) + 16);
-    setFabRight(right);
-  }, []);
-  useEffect(() => {
-    updateFabRight();
-    window.addEventListener('resize', updateFabRight);
-    window.addEventListener('scroll', updateFabRight, { passive: true });
-    return () => {
-      window.removeEventListener('resize', updateFabRight);
-      window.removeEventListener('scroll', updateFabRight);
-    };
-  }, [updateFabRight]);
-
   const {
-    register, handleSubmit, watch,
+    register,
+    handleSubmit,
+    watch,
     formState: { errors, isSubmitting, dirtyFields },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -217,97 +57,66 @@ export default function ArticleEditor({
     },
   });
 
-  /* محتوى ابتدائي + حالة فيديو فقط */
   const initialContent = fromAny(defaultData.content, locale);
-  const [content, setContent] = useState<string>(initialContent);
-  const [isVideoOnly, setIsVideoOnly] = useState<boolean>(() => {
-    return Boolean(defaultData.videoUrl) && isEffectivelyEmpty(initialContent);
-  });
-
+  const [content, setContent] = useState(initialContent);
   const [cover, setCover] = useState(defaultData.coverUrl ?? '');
 
-  // نقطة التركيز للصورة
   const [coverPosition, setCoverPosition] = useState<CoverPosition>(() => {
     const pos = defaultData.meta?.coverPosition;
-    if (typeof pos === 'string') {
-      if (pos === 'top') return { x: 50, y: 0 };
-      if (pos === 'bottom') return { x: 50, y: 100 };
-    }
-    if (typeof pos === 'object' && pos !== null && 'x' in pos && 'y' in pos) {
-      return pos as CoverPosition;
-    }
+    if (pos === 'top') return { x: 50, y: 0 };
+    if (pos === 'bottom') return { x: 50, y: 100 };
+    if (typeof pos === 'object' && pos && 'x' in pos && 'y' in pos) return pos as CoverPosition;
     return { x: 50, y: 50 };
   });
 
-  /** ✅ التصنيفات بعد التطبيع إلى اسم بولندي كسلسلة */
-  const [cats, setCats] = useState<CategoryUI[]>([]);
-  const [loadingCats, setLoadingCats] = useState(false);
+  const initialVideoOnly = Boolean(defaultData.videoUrl);
+  const [isVideoOnly, setIsVideoOnly] = useState(initialVideoOnly);
+
   const [saving, setSaving] = useState(false);
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const [slugAvailable, setSlugAvailable] = useState<boolean | null>(isEdit ? true : null);
   const [dirty, setDirty] = useState(false);
 
-  const coverContainerRef = useRef<HTMLDivElement>(null);
-  const isDraggingRef = useRef(false);
-
   const titleVal = watch('title');
-  const excerptVal = watch('excerpt');
-  const categoryId = watch('categoryId');
+  const excerptVal = watch('excerpt') || '';
+  const categoryId = watch('categoryId') || '';
+  const videoUrlVal = (watch('videoUrl') || '').trim();
 
   const autoSlug = useMemo(() => makeSlug(titleVal), [titleVal]);
   const visibleSlug = isEdit ? (defaultData.slug as string) : autoSlug;
 
-  // ✅ تحميل التصنيفات مع تطبيع الاسم إلى بولندي فقط
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      setLoadingCats(true);
-      try {
-        const r = await fetch(`/api/categories`);
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        const data = (await r.json()) as CategoryFromApi[];
-        const normalized: CategoryUI[] = data
-          .map((c) => ({ _id: c._id, name: toPolishName(c.name) }))
-          .filter((c) => c.name.length > 0)
-          .sort((a, b) => a.name.localeCompare(b.name, 'pl'));
-        if (mounted) setCats(normalized);
-      } catch {
-        toast.error('Failed to load categories');
-      } finally {
-        if (mounted) setLoadingCats(false);
-      }
-    })();
-    return () => { mounted = false; };
-  }, []);
-
-  const { getRootProps, getInputProps, isDragActive } = useUpload(locale, setCover);
-
-  const words = useMemo(
+  const wordsCount = useMemo(
     () => content.replace(/<[^>]+>/g, ' ').trim().split(/\s+/).filter(Boolean).length,
     [content],
   );
   const reading = readingTimeFromHtml(content, text.readTime);
 
-  const basicsReady = lenGT3(titleVal) && lenGT3(excerptVal) && lenGT3(categoryId);
-  const ready = basicsReady;
+  useEffect(() => {
+    if (videoUrlVal && !isVideoOnly) setIsVideoOnly(true);
+    if (!videoUrlVal && isVideoOnly && initialVideoOnly) setIsVideoOnly(false);
+  }, [videoUrlVal, isVideoOnly, initialVideoOnly]);
+
+  const basicsReady = isVideoOnly
+    ? lenGT3(titleVal) && videoUrlVal.length > 0
+    : lenGT3(titleVal) && lenGT3(excerptVal) && lenGT3(categoryId);
+
   const canSubmit = basicsReady && !isSubmitting && (isEdit || slugAvailable !== false);
 
   const checkSlugAvailability = useCallback(async (slug: string) => {
     if (!slug || slug.length < 3) return setSlugAvailable(null);
-    if (isEdit && defaultData.slug === slug) { setSlugAvailable(true); return; }
+    if (isEdit && defaultData.slug === slug) return setSlugAvailable(true);
     try {
       const r = await fetch(`/api/admin/articles/slug?slug=${encodeURIComponent(slug)}`);
       if (r.ok) {
         const out = (await r.json()) as { exists?: boolean };
         setSlugAvailable(out.exists === false);
-        return;
       }
-    } catch { /* noop */ }
+    } catch {}
   }, [isEdit, defaultData?.slug]);
 
   const debouncedCheckSlug = useDebouncedCallback(checkSlugAvailability, 450);
-
   useEffect(() => { debouncedCheckSlug(visibleSlug); }, [visibleSlug, debouncedCheckSlug]);
+
   useEffect(() => { setDirty(true); }, [titleVal, excerptVal, content, categoryId, cover, coverPosition, isVideoOnly]);
 
   useEffect(() => {
@@ -316,281 +125,146 @@ export default function ArticleEditor({
     return () => window.removeEventListener('beforeunload', handler);
   }, [dirty]);
 
-  // لو فعلنا "فيديو فقط" نخلي المحتوى النصي فاضي
-  useEffect(() => {
-    if (isVideoOnly && !isEffectivelyEmpty(content)) setContent('');
-  }, [isVideoOnly, content]);
-
-  // سحب/تحريك نقطة التركيز للصورة
-  const handleFocalPointMove = useCallback((clientX: number, clientY: number) => {
-    if (!coverContainerRef.current) return;
-    const rect = coverContainerRef.current.getBoundingClientRect();
-    const x = Math.max(0, Math.min(100, ((clientX - rect.left) / rect.width) * 100));
-    const y = Math.max(0, Math.min(100, ((clientY - rect.top) / rect.height) * 100));
-    setCoverPosition({ x, y });
-  }, []);
-
-  const handleMouseMove = useCallback((e: MouseEvent) => {
-    if (isDraggingRef.current) handleFocalPointMove(e.clientX, e.clientY);
-  }, [handleFocalPointMove]);
-
-  const handleTouchMove = useCallback((e: TouchEvent) => {
-    if (isDraggingRef.current && e.touches[0]) {
-      handleFocalPointMove(e.touches[0].clientX, e.touches[0].clientY);
-    }
-  }, [handleFocalPointMove]);
-
-  // Autosave — مع دعم isVideoOnly
   const autosave = useCallback(async () => {
-    if (!ready || (!isEdit && slugAvailable === false)) return;
+    if (!basicsReady || (!isEdit && slugAvailable === false)) return;
 
     const payload = {
       title: titleVal,
       excerpt: excerptVal,
       content: isVideoOnly ? '' : content,
-      categoryId,
+      categoryId: isVideoOnly ? undefined : categoryId || undefined,
       coverUrl: cover || undefined,
-      videoUrl: (watch('videoUrl') || '').trim() || undefined,
+      videoUrl: videoUrlVal || undefined,
       readingTime: isVideoOnly ? undefined : reading,
-      isVideoOnly, // جديد
+      isVideoOnly,
       meta: { ...(defaultData.meta || {}), coverPosition },
     };
 
     try {
       setSaving(true);
       const r = await fetch(`/api/admin/articles/${encodeURIComponent(visibleSlug)}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
       });
       if (r.ok) { setDirty(false); setLastSavedAt(new Date()); }
     } finally { setSaving(false); }
-  }, [
-    ready, isEdit, slugAvailable, defaultData, titleVal, excerptVal, content,
-    categoryId, cover, reading, visibleSlug, watch, coverPosition, isVideoOnly,
-  ]);
+  }, [basicsReady, isEdit, slugAvailable, defaultData, titleVal, excerptVal, content, categoryId, cover, reading, visibleSlug, videoUrlVal, coverPosition, isVideoOnly]);
 
   const debouncedAutosave = useDebouncedCallback(autosave, 1200);
-  useEffect(() => { debouncedAutosave(); }, [
-    titleVal, excerptVal, content, categoryId, cover, coverPosition, isVideoOnly, debouncedAutosave,
-  ]);
+  useEffect(() => {
+    debouncedAutosave();
+  }, [titleVal, excerptVal, content, categoryId, cover, coverPosition, isVideoOnly, videoUrlVal, debouncedAutosave]);
 
   const onKeyDown = (e: KeyboardEvent<HTMLFormElement>) => {
     const isMac = typeof navigator !== 'undefined' && navigator.platform.toUpperCase().includes('MAC');
-    const saveCombo =
-      (isMac && e.metaKey && e.key.toLowerCase() === 's') ||
-      (!isMac && e.ctrlKey && e.key.toLowerCase() === 's');
+    const saveCombo = (isMac && e.metaKey && e.key.toLowerCase() === 's') || (!isMac && e.ctrlKey && e.key.toLowerCase() === 's');
     if (saveCombo) { e.preventDefault(); handleSubmit(onSubmit)(); }
   };
 
-  const handleMouseUp = useCallback(() => {
-    isDraggingRef.current = false;
-    window.removeEventListener('mousemove', handleMouseMove);
-    window.removeEventListener('mouseup', handleMouseUp);
-    window.removeEventListener('touchmove', handleTouchMove);
-    window.removeEventListener('touchend', handleMouseUp);
-  }, [handleMouseMove, handleTouchMove]);
-
-  const handleMouseDown = useCallback(
-    (e: ReactMouseEvent<HTMLDivElement> | React.TouchEvent<HTMLDivElement>) => {
-      e.preventDefault();
-      isDraggingRef.current = true;
-      window.addEventListener('mousemove', handleMouseMove);
-      window.addEventListener('mouseup', handleMouseUp);
-      window.addEventListener('touchmove', handleTouchMove, { passive: false });
-      window.addEventListener('touchend', handleMouseUp);
-    },
-    [handleMouseMove, handleMouseUp, handleTouchMove],
-  );
-
-  useEffect(() => {
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
-      window.removeEventListener('touchmove', handleTouchMove);
-      window.removeEventListener('touchend', handleMouseUp);
-    };
-  }, [handleMouseMove, handleMouseUp, handleTouchMove]);
-
-  // Submit — مع isVideoOnly
   const onSubmit = async (fv: FormValues) => {
-    if (!isEdit && slugAvailable === false) { toast.error(text.slugInUse); return; }
-    const slugForSubmit = visibleSlug;
+    if (!isEdit && slugAvailable === false) return toast.error(text.slugInUse);
+    if (isVideoOnly && !videoUrlVal) return toast.error(locale === 'pl' ? 'Wymagany link do wideo' : 'Video URL is required for video-only');
+    if (!isVideoOnly && !lenGT3(fv.categoryId || '')) return toast.error(locale === 'pl' ? 'Wybierz kategorię' : 'Please pick a category');
+    if (!isVideoOnly && !lenGT3(fv.excerpt || '')) return toast.error(locale === 'pl' ? 'Dodaj opis (min 4 znaki)' : 'Please add a summary (min 4 chars)');
 
+    const slugForSubmit = visibleSlug;
     const payload = {
       title: fv.title,
       excerpt: fv.excerpt,
       content: isVideoOnly ? '' : content,
-      categoryId: fv.categoryId,
+      categoryId: isVideoOnly ? undefined : fv.categoryId || undefined,
       coverUrl: cover || undefined,
-      videoUrl: fv.videoUrl?.trim() || undefined,
+      videoUrl: videoUrlVal || undefined,
       readingTime: isVideoOnly ? undefined : reading,
-      isVideoOnly, // جديد
+      isVideoOnly,
       meta: { ...(defaultData.meta || {}), coverPosition },
     };
 
     const res = await fetch(`/api/admin/articles/${encodeURIComponent(slugForSubmit)}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
     });
     const out = await res.json().catch(() => ({} as { error?: string }));
     if (!res.ok) return toast.error(out.error || 'error');
     toast.success(isEdit ? text.save : text.create);
+
     if (!isEdit) {
       onSaved?.(slugForSubmit);
       router.push(`/${locale}/admin/articles/${slugForSubmit}/edit`);
     } else {
-      setDirty(false); setLastSavedAt(new Date()); router.refresh();
+      setDirty(false);
+      setLastSavedAt(new Date());
+      router.refresh();
     }
   };
 
+  const stats = `${wordsCount} ${text.words} • ${reading}`;
+
   return (
     <form
-      ref={formRef}
       onSubmit={handleSubmit(onSubmit)}
       onKeyDown={onKeyDown}
-      aria-describedby="save-hint"
-      className="space-y-4 max-w-7xl mx-auto p-4 bg-white/80 dark:bg-zinc-900/80 rounded-xl border border-gray-200 dark:border-zinc-800 shadow-sm pb-24"
+      className="space-y-4 max-w-7xl mx-auto p-1 bg-white/80 dark:bg-zinc-900/80
+                 rounded-xl border border-gray-200 dark:border-zinc-800 shadow-sm"
     >
-      {/* Title & slug */}
-      <div className="space-y-2">
-        <input
-          {...register('title')}
-          placeholder={text.title}
-          className="w-full rounded-lg border px-3 py-2 text-lg font-medium bg-white dark:bg-zinc-900 border-gray-300 dark:border-zinc-700 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
-        />
-        <div className="flex flex-wrap items-center gap-2 justify-between text-xs text-gray-500 dark:text-gray-400">
-          {errors.title ? <span className="text-red-600">{errors.title.message}</span> : <span>{text.pressToSave}</span>}
-          <span>{(watch('title') || '').length}/140</span>
-        </div>
-        <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 select-all">
-          <span className="rounded bg-gray-100 dark:bg-zinc-800 px-2 py-0.5">/{visibleSlug}</span>
-        </div>
-      </div>
-
-      {/* Excerpt */}
-      <div className="space-y-1">
-        <textarea
-          {...register('excerpt')}
-          rows={3}
-          placeholder={text.excerpt}
-          className="w-full rounded-lg border px-3 py-2 bg-white dark:bg-zinc-900 border-gray-300 dark:border-zinc-700 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500/40"
-        />
-        <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400">
-          {errors.excerpt && <span className="text-red-600">{errors.excerpt.message}</span>}
-          <span>{(watch('excerpt') || '').length}/400</span>
-        </div>
-      </div>
-
-      {/* Category ONLY */}
-      <div>
-        <label className="text-xs font-medium text-gray-700 dark:text-gray-300">{text.cat}</label>
-        {loadingCats ? (
-          <div className="h-[38px] rounded-lg bg-gray-100 dark:bg-zinc-800 animate-pulse" />
-        ) : (
-          <select
-            {...register('categoryId')}
-            className={`w-full rounded-lg border px-3 py-2 bg-white dark:bg-zinc-900 ${
-              errors.categoryId ? 'border-red-600' : 'border-gray-300 dark:border-zinc-700'
-            }`}
-          >
-            <option value="">{text.cat}</option>
-            {cats.map((c) => (
-              <option key={c._id} value={c._id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        )}
-      </div>
-
-      {/* Video-only toggle */}
-      <VideoOnlyToggle
-        checked={isVideoOnly}
-        onChange={setIsVideoOnly}
-        label={text.videoOnly}
-        hint={text.videoOnlyHint}
+      <TitleSlug
+        register={register}
+        errors={errors}
+        titleLen={(watch('title') || '').length}
+        slug={visibleSlug}
+        placeholder={text.title}
       />
 
-      {/* Video URL */}
-      <div>
-        <label className="text-xs font-medium text-gray-700 dark:text-gray-300" htmlFor="video-url">
-          {text.videoUrlLabel}
-        </label>
-        <input
-          id="video-url"
-          {...register('videoUrl')}
-          placeholder="https://…"
-          className="w-full rounded-lg border px-3 py-2 bg-white dark:bg-zinc-900 border-gray-300 dark:border-zinc-700 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
-        />
-      </div>
+      <Excerpt
+        register={register}
+        errors={errors}
+        valueLen={(watch('excerpt') || '').length}
+        placeholder={text.excerpt}
+        videoOnly={isVideoOnly}
+        notePL="Tryb tylko wideo — opis nie jest wymagany."
+        noteEN="Video-only mode — summary is not required."
+      />
 
-      {/* TipTap Editor — مخفي لو فيديو فقط */}
+      <CategorySelect
+        label={text.cat}
+        register={register}
+        errors={errors}
+        disabled={isVideoOnly}
+      />
+
+      <VideoSection
+        checked={isVideoOnly}
+        onToggle={setIsVideoOnly}
+        label={text.videoOnly}
+        hint={text.videoOnlyHint}
+        urlLabel={text.videoUrlLabel}
+        register={register}
+      />
+
       {!isVideoOnly ? (
-        <div className="space-y-1 rounded-lg border border-gray-200 dark:border-zinc-700 p-3">
-          <TipTap content={content} setContent={setContent} />
-          <div className="flex justify-between gap-2 text-xs text-gray-500 dark:text-gray-400">
-            <span>
-              {words} {text.words} • {reading}
-            </span>
-          </div>
-        </div>
+        <EditorBox content={content} setContent={setContent} stats={stats} />
       ) : (
         <div className="rounded-lg border border-dashed border-gray-300 dark:border-zinc-700 p-3 text-sm text-gray-500 dark:text-gray-400">
-          {locale === 'pl'
-            ? 'Tryb tylko wideo — edytor tekstu ukryty.'
-            : 'Video-only mode — text editor hidden.'}
+          {locale === 'pl' ? 'Tryb tylko wideo — edytor tekstu ukryty.' : 'Video-only mode — text editor hidden.'}
         </div>
       )}
 
-      {/* Cover Upload & Preview */}
-      <div>
-        <label className="block mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">
-          {text.cover}
-        </label>
-        <div
-          {...getRootProps()}
-          className="border-2 border-dashed rounded-lg p-4 text-center cursor-pointer transition hover:border-blue-500 dark:border-zinc-700"
-        >
-          <input {...getInputProps()} />
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            {isDragActive ? text.imgDrop : text.imgDrag}
-          </p>
-        </div>
+      <CoverUploader
+        locale={locale}
+        cover={cover}
+        setCover={setCover}
+        coverPosition={coverPosition}
+        setCoverPosition={setCoverPosition}
+        label={text.cover}
+      />
 
-        {cover && (
-          <CoverPreview
-            cover={cover}
-            coverPosition={coverPosition}
-            setCover={setCover}
-            setCoverPosition={setCoverPosition}
-            coverContainerRef={coverContainerRef}
-            onMouseDownGlobal={handleMouseDown}
-          />
-        )}
-      </div>
+      <StatusBar
+        saving={saving}
+        dirty={dirty}
+        dirtyCount={Object.keys(dirtyFields).length}
+        savedAtText={!saving && !dirty && lastSavedAt ? text.savedAt(lastSavedAt.toLocaleTimeString()) : null}
+        unsavedText={text.unsaved}
+      />
 
-      {/* شريط الحالة */}
-      <div className="border-t pt-3 mt-2 text-xs text-gray-600 dark:text-gray-400">
-        <div className="flex items-center gap-3">
-          {saving && <span>{text.saving}</span>}
-          {!saving && !dirty && lastSavedAt && <span>{text.savedAt(lastSavedAt.toLocaleTimeString())}</span>}
-          {(Object.keys(dirtyFields).length > 0 || dirty) && <span className="text-orange-600">{text.unsaved}</span>}
-        </div>
-      </div>
-
-      {/* زر حفظ عائم */}
-      <button
-        type="submit"
-        disabled={!canSubmit || isSubmitting}
-        className="fixed bottom-6 z-[1000] rounded-full shadow-lg px-5 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold"
-        style={{ right: fabRight }}
-        aria-label="Save"
-        title={isSubmitting ? text.saving : (isEdit ? text.save : text.create)}
-      >
-        {isSubmitting ? text.saving : (isEdit ? text.save : text.create)}
-      </button>
+      <SaveFab disabled={!canSubmit || isSubmitting} busy={isSubmitting} label={isEdit ? text.save : text.create} />
     </form>
   );
 }

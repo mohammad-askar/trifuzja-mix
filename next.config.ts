@@ -3,7 +3,10 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   images: {
     remotePatterns: [
-      // للصور المرفوعة محلياً أثناء التطوير
+      // للصور المرفوعة محلي
+      // اً أثناء التطوير
+      { protocol: 'https', hostname: 'img.youtube.com' },
+      { protocol: 'https', hostname: 'i.ytimg.com' },
       {
         protocol: "http",
         hostname: "localhost",

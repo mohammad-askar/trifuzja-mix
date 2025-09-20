@@ -16,7 +16,6 @@ interface CoverPos { x: number; y: number }
 
 interface ArticleMeta {
   coverPosition?: CoverPos | 'top' | 'center' | 'bottom';
-  // حقول إضافية اختيارية
   [key: string]: unknown;
 }
 
@@ -24,16 +23,14 @@ interface ArticleMeta {
 export interface ArticleDoc {
   _id?: string;
   slug: string;
-  title: string;           // نص واحد فقط
-  excerpt?: string;        // نص واحد فقط
-  content?: string;        // HTML نصّي واحد
-  categoryId: string;
+  title: string;
+  excerpt?: string;
+  content?: string;        // HTML
+  categoryId?: string;     // قد لا يوجد مع فيديو فقط
   coverUrl?: string;
   videoUrl?: string;
-  /** لا نستخدم draft بعد الآن: الجديد دائمًا published (القديم قد لا يملك status) */
   status?: 'published';
-  /** يحدّد أن المقال فيديو فقط (لا نص يُعتدّ به) */
-  isVideoOnly?: boolean;
+  isVideoOnly?: boolean;   // ← مفتاح التمييز
   createdAt: Date;
   updatedAt: Date;
   readingTime?: string;
@@ -47,7 +44,6 @@ export interface ArticleDoc {
 const responseError = (msg: string, status = 400) =>
   NextResponse.json({ error: msg }, { status });
 
-/** URL مطلق http/https أو أي مسار يبدأ بـ / */
 const relativeOrAbsoluteUrl = z
   .string()
   .refine(
@@ -55,7 +51,7 @@ const relativeOrAbsoluteUrl = z
       !v ||
       v.startsWith('http://') ||
       v.startsWith('https://') ||
-      v.startsWith('/'),
+      v.startsWith('/uploads/'),
     'Invalid URL',
   );
 
@@ -77,18 +73,15 @@ function isEffectivelyEmpty(html?: string): boolean {
  * الاستعلامات المدعومة:
  * - ?pageNo=1&limit=9
  * - ?cat=catId  أو ?cat=cat1,cat2  أو تكرار cat عدة مرات
- * - ?videoOnly=1 أو ?video=1  ← يجلب فقط المقالات من نوع فيديو فقط
+ * - ?videoOnly=1  ← يجلب فقط الفيديوهات
  * يرجع فقط المنشور، وكذلك السجلات القديمة التي قد لا تملك status.
  */
 export async function GET(req: NextRequest) {
   try {
-    const TruthyParam = z.union([z.literal('1'), z.literal('true')]);
-
     const SearchSchema = z.object({
       pageNo: z.coerce.number().int().min(1).default(1),
       limit: z.coerce.number().int().min(1).max(50).default(9),
-      videoOnly: TruthyParam.optional(),
-      video: TruthyParam.optional(), // alias إضافي
+      videoOnly: z.union([z.literal('1'), z.literal('true')]).optional(),
     });
 
     const rawParams = Object.fromEntries(req.nextUrl.searchParams);
@@ -104,24 +97,28 @@ export async function GET(req: NextRequest) {
       $or: [{ status: 'published' }, { status: { $exists: false } }],
     };
 
+    // فلترة التصنيفات
     if (catsArray.length === 1) {
       filter.categoryId = catsArray[0];
     } else if (catsArray.length > 1) {
       filter.categoryId = { $in: catsArray };
     }
 
-    // فلترة فيديو فقط إن طُلبت
-    const wantVideoOnly = !!(qp.videoOnly || qp.video);
-    if (wantVideoOnly) {
+    // 🎯 السياسة الجديدة:
+    // - بشكل افتراضي: استبعد الفيديوهات (isVideoOnly !== true)
+    // - عند videoOnly=1: اجلب الفيديوهات فقط
+    if (qp.videoOnly) {
       filter.isVideoOnly = true;
-      // كتحسّب إضافي: تأكد من وجود videoUrl
+      // كتحسّب إضافي: تأكد من وجود videoUrl غير فارغ
       (filter as Record<string, unknown>).videoUrl = { $exists: true, $ne: '' };
+    } else {
+      filter.isVideoOnly = { $ne: true }; // يشمل الوثائق التي لا تملك الحقل
     }
-
-    const skip = (qp.pageNo - 1) * qp.limit;
 
     const db = (await clientPromise).db();
     const coll = db.collection<ArticleDoc>('articles');
+
+    const skip = (qp.pageNo - 1) * qp.limit;
 
     // إسقاط المحتوى الكبير من القائمة (نُظهر الملخّص فقط)
     const cursor = coll
@@ -156,7 +153,7 @@ export async function GET(req: NextRequest) {
       categoryId: d.categoryId,
       coverUrl: d.coverUrl,
       videoUrl: d.videoUrl,
-      isVideoOnly: d.isVideoOnly === true, // دائمًا boolean
+      isVideoOnly: d.isVideoOnly === true, // ← دائمًا boolean
       status: d.status, // ستكون 'published' أو غير موجودة في القديم
       createdAt: d.createdAt,
       updatedAt: d.updatedAt,
@@ -191,10 +188,10 @@ const ArticleSchema = z.object({
   excerpt: z.string().trim().optional(),
   content: z.string().trim().optional(),  // HTML
   slug: z.string().trim().min(3),
-  categoryId: z.string().trim().min(1),
+  categoryId: z.string().trim().optional(), // قد يكون فارغًا للفيديو فقط
   coverUrl: relativeOrAbsoluteUrl.optional(),
   videoUrl: relativeOrAbsoluteUrl.optional(),
-  /** إن أرسلته من الواجهة نعتمده، وإلا نحسبه تلقائيًا (انظر أدناه) */
+  /** إن أرسلته من الواجهة نعتمده، وإلا نحسبه تلقائيًا */
   isVideoOnly: z.boolean().optional(),
   meta: z
     .object({
@@ -228,11 +225,6 @@ export async function POST(req: NextRequest) {
 
     const now = new Date();
 
-    // حساب وقت القراءة من المحتوى الأحادي (إن وُجد)
-    const firstContent = parsed.content ?? '';
-    const words = firstContent.replace(/<[^>]+>/g, ' ').trim().split(/\s+/).filter(Boolean).length;
-    const minutes = Math.max(1, Math.ceil(words / 200));
-
     // تحديد isVideoOnly:
     // - أولوية للحقل المُرسل من الواجهة إن وُجد.
     // - وإلا: لو يوجد videoUrl والمحتوى فعليًا فارغ → true؛ غير ذلك false.
@@ -241,20 +233,30 @@ export async function POST(req: NextRequest) {
         ? parsed.isVideoOnly
         : !!parsed.videoUrl && isEffectivelyEmpty(parsed.content);
 
+    // حساب وقت القراءة من المحتوى الأحادي (إن وُجد ومتى لم يكن فيديو فقط)
+    let readingTime: string | undefined;
+    if (!computedIsVideoOnly) {
+      const firstContent = parsed.content ?? '';
+      const words = firstContent.replace(/<[^>]+>/g, ' ').trim().split(/\s+/).filter(Boolean).length;
+      const minutes = Math.max(1, Math.ceil(words / 200));
+      readingTime = `${minutes} min read`;
+    }
+
     const doc: ArticleDoc = {
       slug: parsed.slug,
       title: parsed.title,
       excerpt: parsed.excerpt,
       content: parsed.content,
-      categoryId: parsed.categoryId,
+      // نخزّن التصنيف لو أُرسل فقط (الفيديو قد لا يملك تصنيفًا)
+      ...(parsed.categoryId ? { categoryId: parsed.categoryId } : {}),
       coverUrl: parsed.coverUrl,
       videoUrl: parsed.videoUrl,
       isVideoOnly: computedIsVideoOnly,
       meta: parsed.meta,
-      status: 'published',                // ننشر مباشرةً
+      status: 'published',
       createdAt: now,
       updatedAt: now,
-      readingTime: `${minutes} min read`,
+      readingTime,
     };
 
     await coll.insertOne(doc);

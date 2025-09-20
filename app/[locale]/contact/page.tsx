@@ -43,7 +43,7 @@ export async function generateMetadata({
   const loc: Locale = LOCALES.includes(locale) ? locale : 'en';
   const t = i18n[loc];
   return {
-    title: `${t.title} | Initiativa Autonoma`,
+    title: `${t.title} Contact | Initiativa Autonoma`,
     description:
       loc === 'pl' ? 'Formularz kontaktowy serwisu Initiativa Autonoma.' : 'Contact form for Initiativa Autonoma.',
     alternates: { canonical: `/${loc}/contact` },

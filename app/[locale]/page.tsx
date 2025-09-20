@@ -50,6 +50,7 @@ interface RawArticle {
   status?: 'draft' | 'published';
   createdAt?: Date;
   meta?: { coverPosition?: LegacyCoverPos | CoverPosition };
+  isVideoOnly?: boolean; // ✅ جديد: موجود في الداتابيس للمقالات الفيديو فقط
 }
 
 interface ArticleCard {
@@ -60,6 +61,7 @@ interface ArticleCard {
   coverUrl?: string;
   createdAt?: string;
   meta?: { coverPosition?: LegacyCoverPos | CoverPosition };
+  isVideoOnly?: boolean; // ✅ نمرّره للكرت لعرض شارة "Video"
 }
 
 // تلتقط من string مباشرة، أو من record حسب اللغة ثم أي قيمة متاحة
@@ -120,6 +122,7 @@ export default async function LocaleHome({
       coverUrl: 1,
       createdAt: 1,
       meta: 1,
+      isVideoOnly: 1, // ✅ اسحب الحقل من قاعدة البيانات
     })
     .toArray();
 
@@ -131,6 +134,7 @@ export default async function LocaleHome({
     coverUrl: d.coverUrl,
     createdAt: d.createdAt ? d.createdAt.toISOString() : undefined,
     meta: d.meta ? { coverPosition: d.meta.coverPosition } : undefined,
+    isVideoOnly: d.isVideoOnly === true, // ✅ مرّر القيمة للكرت
   }));
 
   return (

@@ -264,7 +264,7 @@ export default async function ArticlePage(
               dangerouslySetInnerHTML={{ __html: bodySafe }}
             />
           ) : (
-            <p className="mt-8 italic text-center text-gray-500 dark:text-gray-400">No content.</p>
+            <p className="mt-8 italic text-center text-gray-500 dark:text-gray-400"></p>
           )}
         </div>
       </div>

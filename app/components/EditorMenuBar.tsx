@@ -1,7 +1,7 @@
 // 📁 app/components/EditorMenuBar.tsx
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { Editor } from '@tiptap/react';
 
 export interface EditorMenuBarProps {
@@ -10,13 +10,13 @@ export interface EditorMenuBarProps {
   uploadingImage?: boolean;
   onSave?: () => void;
   saving?: boolean;
-  /** Minimum spacing from very top if no header is found */
+  /** مسافة من أعلى الصفحة إذا لم يوجد هيدر ثابت */
   stickyTopPx?: number;
-  /** CSS selector to detect your fixed header and offset under it */
-  offsetSelector?: string; // e.g. '#site-header' or '.app-navbar'
+  /** سليكتور لاكتشاف الهيدر الثابت وحساب الإزاحة تحته */
+  offsetSelector?: string; // مثل '#site-header' أو '.app-navbar'
 }
 
-const FONT_SIZES = ['12px', '14px', '16px', '18px', '20px', '24px', '28px', '32px'] as const;
+const FONT_SIZES = ['12px','14px','16px','18px','20px','24px','28px','32px'] as const;
 const COLORS = [
   '#000000','#1f2937','#374151','#2563eb','#059669',
   '#f59e0b','#dc2626','#7c3aed','#9333ea','#f97316','#ffffff',
@@ -34,48 +34,68 @@ export default function EditorMenuBar({
   stickyTopPx = 12,
   offsetSelector = '#site-header, header, nav, [data-sticky-header]',
 }: EditorMenuBarProps) {
-  /** ---------- Sticky + Mini Dock ---------- */
+  /** ---------- Sticky measurements ---------- */
   const barRef = useRef<HTMLDivElement | null>(null);
-  const [showMini, setShowMini] = useState<boolean>(false);
-
-  // dynamic top offset so the bar sits under the real header
+  const [barHeight, setBarHeight] = useState<number>(0);
   const [computedTop, setComputedTop] = useState<number>(stickyTopPx);
 
-  useEffect(() => {
-    const header = document.querySelector(offsetSelector) as HTMLElement | null;
+useEffect(() => {
+  // Any selectors for sticky/fixed bars you have
+  const selectors = offsetSelector || '#site-header, header, nav, [data-sticky-header]';
 
-    const calc = () => {
-      if (!header) {
-        setComputedTop(stickyTopPx);
-        return;
+  const getBars = () =>
+    Array.from(document.querySelectorAll<HTMLElement>(selectors));
+
+  const calc = () => {
+    const bars = getBars();
+    let total = 0;
+
+    bars.forEach((el) => {
+      const cs = window.getComputedStyle(el);
+      const pos = cs.position;
+      // Only count real overlays
+      if (pos === 'fixed' || pos === 'sticky') {
+        const rect = el.getBoundingClientRect();
+        // If the sticky bar is currently stuck or fixed, include its height
+        const isVisible = rect.height > 0 && rect.bottom > 0;
+        if (isVisible) total += rect.height;
       }
-      const h = header.getBoundingClientRect().height || 0;
-      // add a small gap so the bar breathes under the header
-      setComputedTop(h + 8);
-    };
+    });
 
-    calc();
+    // add a small breathing room
+    setComputedTop(total > 0 ? total + 8 : stickyTopPx);
+  };
 
-    const ro = header ? new ResizeObserver(calc) : null;
-    if (header && ro) ro.observe(header);
-    window.addEventListener('resize', calc);
+  calc();
 
-    return () => {
-      window.removeEventListener('resize', calc);
-      ro?.disconnect();
-    };
-  }, [offsetSelector, stickyTopPx]);
+  // Watch size changes on all bars
+  const ros = getBars().map((el) => {
+    const ro = new ResizeObserver(calc);
+    ro.observe(el);
+    return ro;
+  });
 
-  useEffect(() => {
+  // Recalculate on scroll/resize as sticky state can change
+  window.addEventListener('scroll', calc, { passive: true });
+  window.addEventListener('resize', calc);
+
+  return () => {
+    window.removeEventListener('scroll', calc);
+    window.removeEventListener('resize', calc);
+    ros.forEach((ro) => ro.disconnect());
+  };
+}, [offsetSelector, stickyTopPx]);
+
+
+  useLayoutEffect(() => {
     const el = barRef.current;
     if (!el) return;
-
-    const io = new IntersectionObserver(
-      (entries) => setShowMini(!entries[0].isIntersecting),
-      { threshold: 0.01 },
-    );
-    io.observe(el);
-    return () => io.disconnect();
+    const measure = () => setBarHeight(el.getBoundingClientRect().height || 0);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    window.addEventListener('resize', measure);
+    return () => { ro.disconnect(); window.removeEventListener('resize', measure); };
   }, []);
 
   /** ---------- Helpers/Buttons ---------- */
@@ -141,13 +161,10 @@ export default function EditorMenuBar({
     run(() => editor.chain().updateAttributes('image', { align }).run());
   };
 
-  /** ---------- Indent / Outdent logic (Tab-like) ---------- */
   const indentStep = (dir: 'in' | 'out') => {
     if (!editor) return;
-    // داخل الجداول أو كتلة الكود: لا نعبث
     if (editor.isActive('table') || editor.isActive('codeBlock')) return;
 
-    // داخل القوائم: sink/lift
     if (editor.isActive('listItem')) {
       if (dir === 'in' && editor.can().sinkListItem('listItem')) {
         run(() => editor.chain().sinkListItem('listItem').run());
@@ -159,63 +176,12 @@ export default function EditorMenuBar({
       }
     }
 
-    // خارج القوائم: عدّل indent على paragraph/heading
     const isHeading = editor.isActive('heading');
     const type = isHeading ? 'heading' : 'paragraph';
     const cur = (editor.getAttributes(type)?.indent as number | undefined) ?? 0;
     const next = Math.max(0, Math.min(6, cur + (dir === 'in' ? 1 : -1)));
     run(() => editor.chain().updateAttributes(type, { indent: next }).run());
   };
-
-  /** ---------- Mini Dock ---------- */
-  const MiniDock: React.FC = () => (
-    <div className="fixed bottom-6 right-6 z-[1100]">
-      <div className="flex items-center gap-1 rounded-full border border-zinc-700 bg-zinc-900/95 backdrop-blur px-2 py-1 shadow-lg">
-        <Btn label="B" title="Bold" active={!!editor && editor.isActive('bold')} onClick={() => run(() => editor!.chain().toggleBold().run())} />
-        <Btn label="I" title="Italic" active={!!editor && editor.isActive('italic')} onClick={() => run(() => editor!.chain().toggleItalic().run())} />
-        <Btn label="U" title="Underline" active={!!editor && editor.isActive('underline')} onClick={() => run(() => editor!.chain().toggleUnderline().run())} />
-        <Divider />
-        <Btn label="•" title="Bullet List" active={!!editor && editor.isActive('bulletList')} onClick={() => run(() => editor!.chain().toggleBulletList().run())} />
-        <Btn label="1." title="Numbered List" active={!!editor && editor.isActive('orderedList')} onClick={() => run(() => editor!.chain().toggleOrderedList().run())} />
-        <Divider />
-        <Btn
-          label="Link"
-          title="Insert Link"
-          disabled={!editor || isInLink}
-          onClick={() => {
-            const url = window.prompt('Enter URL (https://)');
-            if (!url) return;
-            run(() => editor!.chain().extendMarkRange('link').setLink({ href: url }).run());
-          }}
-        />
-        <Btn label={uploadingImage ? 'Img…' : 'Img'} title="Insert Image" onClick={() => onInsertImage?.()} disabled={uploadingImage || !editor} />
-        <Divider />
-        {/* فاصل */}
-        <Btn label="───" title="Insert separator" onClick={() => run(() => editor!.chain().setHorizontalRule().run())} />
-        <Divider />
-        {/* Indent / Outdent */}
-        <Btn label="⇥" title="Indent (Tab)" onClick={() => indentStep('in')} />
-        <Btn label="⇤" title="Outdent (Shift+Tab)" onClick={() => indentStep('out')} />
-        <Divider />
-        <Btn label="↶" title="Undo" disabled={!canUndo} onClick={() => run(() => editor!.chain().undo().run())} />
-        <Btn label="↷" title="Redo" disabled={!canRedo} onClick={() => run(() => editor!.chain().redo().run())} />
-        {onSave && (
-          <>
-            <Divider />
-            <button
-              type="button"
-              title={saving ? 'Saving…' : 'Save'}
-              onClick={onSave}
-              disabled={saving}
-              className="px-3 py-1 text-xs rounded-full bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50"
-            >
-              {saving ? 'Saving…' : 'Save'}
-            </button>
-          </>
-        )}
-      </div>
-    </div>
-  );
 
   /** ---------- UI ---------- */
   return (
@@ -250,9 +216,9 @@ export default function EditorMenuBar({
           {/* Image tools */}
           {isImageSelected && (
             <div className="flex items-center gap-1">
-              <Btn label="L" title="Align image left" onClick={() => setImageAlign('left')} active={editor!.getAttributes('image')?.align === 'left'} />
+              <Btn label="L" title="Align image left"  onClick={() => setImageAlign('left')}   active={editor!.getAttributes('image')?.align === 'left'} />
               <Btn label="C" title="Align image center" onClick={() => setImageAlign('center')} active={editor!.getAttributes('image')?.align === 'center'} />
-              <Btn label="R" title="Align image right" onClick={() => setImageAlign('right')} active={editor!.getAttributes('image')?.align === 'right'} />
+              <Btn label="R" title="Align image right"  onClick={() => setImageAlign('right')}  active={editor!.getAttributes('image')?.align === 'right'} />
             </div>
           )}
           <Divider />
@@ -340,10 +306,10 @@ export default function EditorMenuBar({
 
           <Divider />
 
-          {/* ✅ Separator line */}
+          {/* Separator */}
           <Btn label="───" title="Insert separator" onClick={() => run(() => editor!.chain().setHorizontalRule().run())} />
 
-          {/* ✅ Indent / Outdent */}
+          {/* Indent / Outdent */}
           <Btn label="⇥" title="Indent (Tab)" onClick={() => indentStep('in')} />
           <Btn label="⇤" title="Outdent (Shift+Tab)" onClick={() => indentStep('out')} />
 
@@ -373,7 +339,8 @@ export default function EditorMenuBar({
         </div>
       </div>
 
-      {showMini && <MiniDock />}
+      {/* Spacer لتجنّب تغطية المحتوى */}
+      <div aria-hidden="true" style={{ height: barHeight }} />
     </>
   );
 }

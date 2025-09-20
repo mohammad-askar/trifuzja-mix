@@ -21,6 +21,7 @@ interface ArticleMini {
   excerpt?: string;
   coverUrl?: string;
   meta?: { coverPosition?: LegacyCoverPos | CoverPosition };
+  isVideoOnly?: boolean; // ✅ لإظهار الشارة عند مقالات الفيديو فقط
 }
 
 /* Helpers */
@@ -105,6 +106,17 @@ export default function LatestArticlesSlider({
                       className="object-cover group-hover:scale-105 transition-transform duration-300"
                       style={{ objectPosition }}
                     />
+
+                    {/* شارة الفيديو الحمراء — فقط عند Video-only */}
+                    {a.isVideoOnly && (
+                      <span
+                        className="absolute left-2 top-2 rounded-full bg-rose-500 px-2 py-0.5 text-[10px] font-semibold text-white shadow ring-1 ring-white/15"
+                        aria-label={locale === 'pl' ? 'Wideo' : 'Video'}
+                      >
+                        {locale === 'pl' ? 'Wideo' : 'Video'}
+                      </span>
+                    )}
+
                     <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
                   </div>
 

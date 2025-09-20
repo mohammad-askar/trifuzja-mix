@@ -12,7 +12,7 @@ import type { ObjectId } from 'mongodb';
 /*                           Types & Helpers                           */
 /* ------------------------------------------------------------------ */
 
-// في App Router قد يأتي params كـ Promise — ننتظره دائماً
+// App Router can pass params as a Promise — always await
 type Ctx = { params: Promise<{ slug: string }> };
 
 interface ArticleDocDb {
@@ -20,14 +20,15 @@ interface ArticleDocDb {
   slug: string;
   title: string;
   excerpt?: string;
-  content?: string;            // ← صارت اختيارية لدعم videoOnly
-  categoryId: string;
+  content?: string;               // optional to support video-only
+  categoryId?: string;            // may be absent for video-only
   coverUrl?: string;
-  heroImageUrl?: string;       // توافقية
+  heroImageUrl?: string;          // legacy mirror
   videoUrl?: string;
-  videoOnly?: boolean;         // ← جديد
+  videoOnly?: boolean;            // internal flag
+  isVideoOnly?: boolean;          // public API compatibility
   status?: 'published';
-  createdAt: Date;
+  createdAt?: Date;               // set on insert
   updatedAt: Date;
   readingTime?: string;
   meta?: Record<string, unknown>;
@@ -38,9 +39,7 @@ interface ArticleDocApi extends Omit<ArticleDocDb, '_id'> {
 }
 
 type AdminSessionShape =
-  | {
-      user?: { role?: string | null } | null;
-    }
+  | { user?: { role?: string | null } | null }
   | null
   | undefined;
 
@@ -52,9 +51,9 @@ function requireAdmin(session: unknown): session is AdminSessionShape & {
   user: { role: string };
 } {
   if (!isObject(session)) return false;
-  const user = (session as Record<string, unknown>)['user'];
+  const user = (session as Record<string, unknown>).user;
   if (!isObject(user)) return false;
-  const role = (user as Record<string, unknown>)['role'];
+  const role = (user as Record<string, unknown>).role;
   return role === 'admin';
 }
 
@@ -64,46 +63,46 @@ function normalizeSlug(raw: string) {
   return slug;
 }
 
-// URL مطلق http/https أو مسار يبدأ بـ /
-const relativeOrAbsoluteUrl = z
+// Absolute http/https or app path starting with /
+const urlSchema = z
   .string()
+  .trim()
   .min(1)
   .refine(
-    (v) =>
-      v.startsWith('http://') ||
-      v.startsWith('https://') ||
-      v.startsWith('/'),
+    (v) => v.startsWith('http://') || v.startsWith('https://') || v.startsWith('/'),
     { message: 'Invalid URL' },
   );
 
-// ✅ مخطط أحادي اللغة (لا en/pl) + دعم videoOnly
+// Accept both videoOnly & isVideoOnly; categoryId optional when video-only
 const UpsertSchema = z
   .object({
-    title: z.string().min(1),
-    excerpt: z.string().optional(),
-    content: z.string().optional(), // ← لم تعد إلزامية
-    categoryId: z.string().min(1, 'categoryId is required'),
-    coverUrl: relativeOrAbsoluteUrl.optional(),
-    heroImageUrl: relativeOrAbsoluteUrl.optional(), // للتوافقية
-    videoUrl: relativeOrAbsoluteUrl.optional(),
-    videoOnly: z.boolean().optional(),              // ← جديد
-    // نقبل رقمًا أو نصًا عند الإدخال ونحوّله لاحقًا إلى نص
-    readingTime: z.union([z.number().int().nonnegative(), z.string().min(1)]).optional(),
+    title: z.string().trim().min(1),
+    excerpt: z.string().trim().optional(),
+    content: z.string().trim().optional(),        // not required anymore
+    categoryId: z.string().trim().optional(),     // optional for video-only
+    coverUrl: urlSchema.optional(),
+    heroImageUrl: urlSchema.optional(),           // legacy mirror
+    videoUrl: urlSchema.optional(),
+    videoOnly: z.boolean().optional(),
+    isVideoOnly: z.boolean().optional(),
+    readingTime: z.union([z.number().int().nonnegative(), z.string().trim().min(1)]).optional(),
     meta: z.record(z.string(), z.unknown()).optional(),
   })
   .superRefine((data, ctx) => {
-    const isVideo = data.videoOnly === true;
+    const isVideo = (data.videoOnly ?? data.isVideoOnly) === true;
 
-    if (isVideo && !data.videoUrl) {
-      ctx.addIssue({
-        path: ['videoUrl'],
-        code: z.ZodIssueCode.custom,
-        message: 'videoUrl is required when videoOnly is true',
-      });
-    }
-
-    if (!isVideo) {
-      const c = (data.content ?? '').trim();
+    if (isVideo) {
+      // Video-only: require videoUrl; no need for content/categoryId
+      if (!data.videoUrl) {
+        ctx.addIssue({
+          path: ['videoUrl'],
+          code: z.ZodIssueCode.custom,
+          message: 'videoUrl is required when videoOnly is true',
+        });
+      }
+    } else {
+      // Text article: require non-empty content and categoryId
+      const c = (data.content ?? '').replace(/<[^>]+>/g, '').trim();
       if (!c) {
         ctx.addIssue({
           path: ['content'],
@@ -111,16 +110,19 @@ const UpsertSchema = z
           message: 'content is required when videoOnly is false',
         });
       }
+      if (!data.categoryId) {
+        ctx.addIssue({
+          path: ['categoryId'],
+          code: z.ZodIssueCode.custom,
+          message: 'categoryId is required when videoOnly is false',
+        });
+      }
     }
   });
 
 function computeReadingTimeFromHtml(html?: string) {
   if (!html) return undefined;
-  const words = html
-    .replace(/<[^>]+>/g, ' ')
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean).length;
+  const words = html.replace(/<[^>]+>/g, ' ').trim().split(/\s+/).filter(Boolean).length;
   const minutes = Math.max(1, Math.ceil(words / 200));
   return `${minutes} min read`;
 }
@@ -132,6 +134,14 @@ function responseError(msg: string, status = 400) {
 function toPlainStringReadingTime(rt?: number | string): string | undefined {
   if (rt === undefined) return undefined;
   return typeof rt === 'number' ? String(rt) : rt;
+}
+
+// يحذف المفاتيح التي قيمتها undefined لمنع إرسالها داخل $set
+function pruneUndefined<T extends Record<string, unknown>>(obj: T): T {
+  for (const k of Object.keys(obj)) {
+    if (obj[k] === undefined) delete obj[k];
+  }
+  return obj;
 }
 
 /* ------------------------------------------------------------------ */
@@ -146,17 +156,18 @@ export async function GET(_req: NextRequest, ctx: Ctx) {
   try {
     const slug = normalizeSlug(rawSlug);
     const db = (await clientPromise).db();
-    const article = await db
-      .collection<ArticleDocDb>('articles')
-      .findOne({ slug });
+    const article = await db.collection<ArticleDocDb>('articles').findOne({ slug });
 
     if (!article) return responseError('Not found', 404);
 
+    // Normalize the flags on output as well
+    const videoOnlyFlag = article.videoOnly ?? article.isVideoOnly ?? false;
     const out: ArticleDocApi = {
       ...article,
+      videoOnly: videoOnlyFlag,
+      isVideoOnly: videoOnlyFlag,
       _id: article._id.toString(),
     };
-
     return NextResponse.json(out, { status: 200 });
   } catch (e) {
     if (e instanceof Error && e.message === 'Invalid slug') {
@@ -180,9 +191,12 @@ export async function PUT(req: NextRequest, ctx: Ctx) {
     const slug = normalizeSlug(rawSlug);
     const body = UpsertSchema.parse(await req.json());
 
-    // readingTime: إن لم يُرسل وحال وجود content نحسبه
+    // derive the unified flag
+    const videoOnlyFlag = (body.videoOnly ?? body.isVideoOnly) === true;
+
+    // readingTime only for text posts (and only if not provided)
     let readingTime = toPlainStringReadingTime(body.readingTime);
-    if (!readingTime && body.content) {
+    if (!videoOnlyFlag && !readingTime && body.content) {
       readingTime = computeReadingTimeFromHtml(body.content);
     }
 
@@ -192,36 +206,54 @@ export async function PUT(req: NextRequest, ctx: Ctx) {
 
     const cover = body.coverUrl ?? body.heroImageUrl;
 
-    // ✅ ننشر دائمًا: status: 'published'
-    const set: Partial<ArticleDocDb> = {
-      slug,
-      title: body.title,
-      categoryId: body.categoryId,
-      updatedAt: now,
-      status: 'published',
-    };
-
-    // حقول اختيارية — لا نضع undefined
-    if (body.content !== undefined) set.content = body.content;
-    if (body.excerpt !== undefined) set.excerpt = body.excerpt;
-    if (body.videoUrl !== undefined) set.videoUrl = body.videoUrl;
-    if (body.videoOnly !== undefined) set.videoOnly = body.videoOnly;
-    if (body.meta !== undefined) set.meta = body.meta as Record<string, unknown>;
-    if (readingTime !== undefined) set.readingTime = readingTime;
-
-    if (cover !== undefined) {
-      set.coverUrl = cover;
-      set.heroImageUrl = cover; // إبقاء الحقل للتوافق
+    // ----------- $unset أولاً لتحديد ما سيُزال -----------
+    const unset: Record<string, ''> = {};
+    if (videoOnlyFlag) {
+      if (!body.categoryId || body.categoryId === '') unset.categoryId = '';
+      if (!body.content || body.content.trim() === '') {
+        unset.content = '';
+        unset.readingTime = '';
+      }
     }
 
-    const res = await coll.updateOne(
-      { slug },
-      {
-        $set: set,
-        $setOnInsert: { createdAt: now },
-      },
-      { upsert: true },
-    );
+    // ----------- $set بدون مفاتيح undefined وبعيدًا عن مفاتيح $unset -----------
+    const setRaw: Partial<ArticleDocDb> = {
+      slug,
+      title: body.title,
+      updatedAt: now,
+      status: 'published',
+      videoOnly: videoOnlyFlag,
+      isVideoOnly: videoOnlyFlag, // keep both for compatibility
+      // حقول اختيارية (قد تكون undefined)
+      excerpt: body.excerpt,
+      content: body.content,                 // سنحذفه لاحقًا إن كان undefined
+      videoUrl: body.videoUrl,
+      meta: body.meta as Record<string, unknown> | undefined,
+      readingTime,
+      coverUrl: cover,
+      heroImageUrl: cover,
+      categoryId: body.categoryId && body.categoryId !== '' ? body.categoryId : undefined,
+    };
+
+    // إزالة المفاتيح undefined
+    const setClean = pruneUndefined(setRaw);
+
+    // لا تسمح بوضع حقول في $set موجودة أيضًا في $unset (تجنّب التعارض)
+    for (const key of Object.keys(unset)) {
+      delete (setClean as Record<string, unknown>)[key];
+    }
+
+    const updateDoc: {
+      $set: Partial<ArticleDocDb>;
+      $unset?: Record<string, ''>;
+      $setOnInsert: { createdAt: Date };
+    } = {
+      $set: setClean,
+      $setOnInsert: { createdAt: now },
+    };
+    if (Object.keys(unset).length) updateDoc.$unset = unset;
+
+    const res = await coll.updateOne({ slug }, updateDoc, { upsert: true });
 
     const created = res.upsertedCount > 0;
     return NextResponse.json({ ok: true, slug, created }, { status: created ? 201 : 200 });

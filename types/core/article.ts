@@ -233,20 +233,19 @@ export interface ArticleSeoPayload {
  * -------------------------------------------------- */
 export interface ArticleEditable {
   slug: string;
-meta?: Record<string, unknown>;
-  scheduledFor?: string;
-  thumbnailUrl?: string;
-  title: Record<Locale, string>;
+  title: Record<'en' | 'pl', string>;
   description?: string;
   contentHtml: string;
-  contentRaw?: Record<Locale, string>;
+  contentRaw: Record<'en' | 'pl', string>;
   locale: Locale;
-  pageKey: PageKey;
   status: ArticleStatus;
   categories?: string[];
   heroImageUrl?: string;
-  tags?: string[];    
-  // بقية الحقول...
+  thumbnailUrl?: string;
+  scheduledFor?: string; // ISO string if present
+  meta?: Record<string, unknown>;
+  /** Deprecated: was used previously; keep as never so it can’t be reintroduced by mistake. */
+  pageKey?: never;
 }
 
 
