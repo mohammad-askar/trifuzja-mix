@@ -22,7 +22,7 @@ const TEXTS: Record<Locale, HomeTexts> = {
     heroSubtitle:
       'Independent publishing initiative outside the traditional editorial structure – creativity, quality, and openness.',
     cta: 'Start Reading',
-    latest: 'Latest Articles',
+    latest: 'Latest Content',
     empty: 'No articles yet.',
   },
   pl: {
@@ -30,7 +30,7 @@ const TEXTS: Record<Locale, HomeTexts> = {
     heroSubtitle:
       'Niezależna inicjatywa publikacyjna poza klasyczną strukturą redakcyjną -  kreatywność, jakość i otwartość.',
     cta: 'Czytaj teraz',
-    latest: 'Najnowsze artykuły',
+    latest: 'Najnowsze Materiały',
     empty: 'Brak artykułów.',
   },
 };

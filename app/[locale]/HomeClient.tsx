@@ -51,7 +51,7 @@ const TEXTS: Record<Locale, LocaleTexts> = {
     heroSubtitle:
       'Independent publishing initiative outside the traditional editorial structure – creativity, quality, and openness.',
     cta: 'Start Reading',
-    latest: 'Latest Articles',
+    latest: 'Latest Content',
     empty: 'No articles yet.',
     error: 'Failed to load articles.',
     retry: 'Retry',
@@ -61,7 +61,7 @@ const TEXTS: Record<Locale, LocaleTexts> = {
     heroSubtitle:
       'Niezależna inicjatywa publikacyjna poza klasyczną strukturą redakcyjną -  kreatywność, jakość i otwartość.',
     cta: 'Czytaj teraz',
-    latest: 'Najnowsze artykuły',
+    latest: 'Najnowsze Materiały',
     empty: 'Brak artykułów.',
     error: 'Nie udało się pobrać artykułów.',
     retry: 'Spróbuj ponownie',
@@ -235,7 +235,7 @@ export default function HomeClient() {
         </div>
       </section>
 
-      {/* Latest Articles */}
+      {/* Latest Content */}
       <section className="max-w-6xl mx-auto px-4 pt-12 pb-20">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-2xl font-bold">{t.latest}</h2>
