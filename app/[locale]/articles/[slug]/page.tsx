@@ -5,7 +5,7 @@ import type { Metadata } from 'next';
 import Image from 'next/image';
 import { Facebook, Twitter, Linkedin } from 'lucide-react';
 import DOMPurify from 'isomorphic-dompurify';
-
+import VideoEmbed from '@/app/components/video/VideoEmbed';
 export const revalidate = 0;
 
 type Locale = 'en' | 'pl';
@@ -71,11 +71,6 @@ function stripHtml(html: string): string {
 // احتفظنا بها لو أردت لاحقًا تعديل عرض الصور داخل المحتوى
 function normalizeImageWidths(html: string): string {
   return html;
-}
-
-function youtubeEmbed(url: string): string | null {
-  const match = url.match(/(?:[?&]v=|\/embed\/|youtu\.be\/)([^?&]+)/);
-  return match?.[1] ? `https://www.youtube.com/embed/${match[1]}` : null;
 }
 
 function toCoverXY(pos?: CoverPosition | LegacyCover): CoverPosition {
@@ -241,21 +236,11 @@ export default async function ArticlePage(
           )}
 
           {art.videoUrl && (
-            <div className="my-10 aspect-video rounded-lg overflow-hidden shadow-md ring-1 ring-gray-100 dark:ring-zinc-800">
-              {youtubeEmbed(art.videoUrl) ? (
-                <iframe
-                  src={youtubeEmbed(art.videoUrl) as string}
-                  className="w-full h-full"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                  referrerPolicy="strict-origin-when-cross-origin"
-                  allowFullScreen
-                  title="Embedded Video"
-                />
-              ) : (
-                <video controls src={art.videoUrl} className="w-full h-full object-cover" preload="metadata" />
-              )}
-            </div>
-          )}
+  <div className="my-10 aspect-video rounded-lg overflow-hidden shadow-md ring-1 ring-gray-100 dark:ring-zinc-800">
+    <VideoEmbed url={art.videoUrl} title={title} noCookie className="w-full h-full" />
+  </div>
+)}
+
 
           {bodySafe ? (
             <section

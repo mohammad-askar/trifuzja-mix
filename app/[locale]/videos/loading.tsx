@@ -1,3 +1,4 @@
+//E:\trifuzja-mix\app\[locale]\videos\loading.tsx
 export default function LoadingVideos() {
   return (
     <main className="max-w-6xl mx-auto px-4 pt-24 pb-20">

@@ -10,38 +10,26 @@ const i18n = {
   en: {
     title: 'About Us',
     intro1:
-      'Initiativa Autonoma is a content-driven platform created to educate, inspire, and engage.',
+      'Initiativa Autonoma is an independent publishing project, designed as a space for content created outside of convention – freely, consciously, and in diverse forms, with an emphasis on reliable storytelling and responsibility toward the audience.',
     intro2:
-      'We write articles in English and Polish to connect with a broad community.',
+      'It does not rely on a traditional editorial structure. Instead, it develops flexibly, in tune with topics that deserve attention – without haste, without pressure, and without a format imposed from above.',
     intro3:
-      "Whether you're here to learn something new or simply enjoy reading, you're in the right place. Welcome aboard!",
-    missionH: 'Our Mission',
-    mission:
-      'Deliver clear, practical, and thoughtful articles that help readers grow their knowledge every day.',
-    valuesH: 'Values',
-    values: ['Clarity', 'Usefulness', 'Respect', 'Curiosity'],
-    contactH: 'Contact',
-    contactP1:
-      'We love hearing from you. If you have feedback or ideas, feel free to reach out.',
+      "The project’s direction is guided by its founding team, who ensure the coherence and quality of published materials. It is a space that does not confine itself to one field or one narrative. It is open – to themes, forms, and approaches.",
+      intro4:
+      "The idea for the initiative grew out of earlier activities carried out on social media. Rather than developing them separately, the creators decided to bring them together under one banner.",
     contactLink: 'Go to contact page',
   },
   pl: {
     title: 'O nas',
     intro1:
-      'Initiativa Autonoma to platforma z treściami stworzona, aby edukować, inspirować i angażować.',
+      'Initiativa Autonoma to niezależny projekt publikacyjny, zaprojektowany jako przestrzeń dla treści tworzonych poza schematem – swobodnie, świadomie i w różnorodnej formie, z naciskiem na rzetelną narrację i odpowiedzialność wobec odbiorcy.',
     intro2:
-      'Piszemy artykuły po angielsku i po polsku, aby dotrzeć do szerszej społeczności.',
+      'Nie opiera się na klasycznej strukturze redakcyjnej. Zamiast tego rozwija się elastycznie, w rytmie tematów, które zasługują na uważność – bez pośpiechu, bez presji, bez formatu narzuconego z góry.',
     intro3:
-      'Niezależnie od tego, czy chcesz się czegoś nauczyć, czy po prostu lubisz czytać – jesteś we właściwym miejscu!',
-    missionH: 'Nasza misja',
-    mission:
-      'Dostarczanie klarownych, praktycznych i przemyślanych artykułów, które pomagają czytelnikom rozwijać wiedzę każdego dnia.',
-    valuesH: 'Wartości',
-    values: ['Jasność', 'Użyteczność', 'Szacunek', 'Ciekawość'],
-    contactH: 'Kontakt',
-    contactP1:
-      'Chętnie poznamy Twoją opinię. Jeśli masz uwagi lub pomysły – napisz do nas.',
-    contactLink: 'Przejdź do strony kontaktu',
+      'Za kierunek projektu odpowiada zespół założycielski, który czuwa nad spójnością i jakością publikowanych materiałów. To przestrzeń, która nie zamyka się w jednej dziedzinie ani jednej narracji. Jest otwarta – na tematy, formy i podejścia.',
+    intro4:
+      "Pomysł na inicjatywę wyrósł z wcześniejszych działań prowadzonych w mediach społecznościowych. Zamiast rozwijać je osobno, twórcy postanowili zebrać je pod wspólnym szyldem.",
+      contactLink: 'Przejdź do strony kontaktu',
   },
 } as const;
 
@@ -73,7 +61,7 @@ export default async function AboutPage({
   const t = i18n[loc];
 
   return (
-    <main className="min-h-screen flex justify-center px-4 pt-6 pb-24 bg-gradient-to-br from-blue-50 via-sky-50 to-emerald-50 dark:from-zinc-800 dark:via-zinc-900 dark:to-zinc-950">
+    <main className="min-h-screen flex justify-center px-4 pt-22 pb-24 bg-gradient-to-br from-blue-50 via-sky-50 to-emerald-50 dark:from-zinc-800 dark:via-zinc-900 dark:to-zinc-950">
       <article className="w-full max-w-4xl rounded-3xl bg-white/85 dark:bg-zinc-900/85 shadow-xl ring-1 ring-gray-100 dark:ring-zinc-800 backdrop-blur-lg">
         {/* top accent */}
         <div className="h-[3px] w-full bg-gradient-to-r from-sky-500 via-indigo-500 to-fuchsia-600" />
@@ -84,25 +72,17 @@ export default async function AboutPage({
           </h1>
 
           <p>{t.intro1}</p>
+          <br/>
           <p>{t.intro2}</p>
+          <br/>
           <p>{t.intro3}</p>
-
-          <h2>{t.missionH}</h2>
-          <p>{t.mission}</p>
-
-          <h2>{t.valuesH}</h2>
-          <ul>
-            {t.values.map((v) => (
-              <li key={v}>{v}</li>
-            ))}
-          </ul>
-
-          <h2>{t.contactH}</h2>
-          <p>{t.contactP1}</p>
-          <p>
+          <br/>
+          <p>{t.intro4}</p>
+          <br/>
+          <p className='gradient-to-r from-sky-500 via-indigo-500 to-fuchsia-600'>
             <a
               href={`/${loc}/contact`}
-              className="inline-flex items-center gap-1 underline decoration-sky-500 hover:text-sky-600"
+              className="inline-flex items-center  gap-1 underline  decoration-sky-500 hover:text-sky-600"
             >
               {t.contactLink} →
             </a>

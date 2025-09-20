@@ -1,3 +1,4 @@
+//E:\trifuzja-mix\app\[locale]\videos\error.tsx
 'use client';
 
 export default function ErrorVideos({ error }: { error: Error & { digest?: string } }) {

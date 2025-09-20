@@ -167,8 +167,8 @@ export function Footer({
           </div>
           <p className="text-sm text-gray-400">
             {locale === "pl"
-              ? "Odkrywaj najlepsze artykuły i treści na Initiativa Autonoma."
-              : "Explore the best articles and content on Initiativa Autonoma."}
+              ? "Odkrywaj najlepsze treści na Initiativa Autonoma."
+              : "Explore the best content on Initiativa Autonoma."}
           </p>
         </div>
 

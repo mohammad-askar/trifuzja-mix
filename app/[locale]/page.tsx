@@ -17,17 +17,17 @@ interface HomeTexts {
 
 const TEXTS: Record<Locale, HomeTexts> = {
   en: {
-    heroTitle: 'Welcome to Initiativa Autonoma',
+    heroTitle: 'Initiativa Autonoma',
     heroSubtitle:
-      'Articles that educate, inspire, and engage – in English and Polish.',
+      'Independent publishing initiative outside the traditional editorial structure – creativity, quality, and openness.',
     cta: 'Start Reading',
     latest: 'Latest Articles',
     empty: 'No articles yet.',
   },
   pl: {
-    heroTitle: 'Witamy w Initiativa Autonoma',
+    heroTitle: 'Initiativa Autonoma',
     heroSubtitle:
-      'Artykuły, które edukują, inspirują i angażują – po angielsku i po polsku.',
+      'Niezależna inicjatywa publikacyjna poza klasyczną strukturą redakcyjną -  kreatywność, jakość i otwartość.',
     cta: 'Czytaj teraz',
     latest: 'Najnowsze artykuły',
     empty: 'Brak artykułów.',

@@ -4,8 +4,7 @@ import type { Metadata } from 'next';
 import Image from 'next/image';
 import Link from 'next/link';
 import { headers } from 'next/headers';
-
-
+import { getYouTubeThumb } from '@/utils/youtube'; // ✅ استخدم الدوال الموحّدة
 
 type Locale = 'en' | 'pl';
 
@@ -42,7 +41,7 @@ export async function generateMetadata({
 
 /* ---------- Build absolute base URL from request headers ---------- */
 async function buildBaseUrlFromHeaders(): Promise<string> {
-  const h = await headers(); // ✅ لازم await
+  const h = await headers();
   const host = h.get('x-forwarded-host') ?? h.get('host') ?? 'localhost:3000';
   const proto = h.get('x-forwarded-proto') ?? 'http';
   return `${proto}://${host}`;
@@ -70,26 +69,6 @@ async function fetchVideos(qs: string) {
     limit: number;
     pages: number;
   }>;
-}
-
-// ✅ نضيف ID و Thumbnail ليوتيوب لجلب صورة خفيفة بدل iframe
-function getYouTubeId(url: string): string | null {
-  try {
-    const u = new URL(url);
-    if (u.host.includes('youtu.be')) return u.pathname.slice(1);
-    if (u.host.includes('youtube.com')) {
-      const v = u.searchParams.get('v');
-      if (v) return v;
-      const seg = u.pathname.split('/').filter(Boolean);
-      if (seg[0] === 'shorts' && seg[1]) return seg[1];
-      if (seg[0] === 'embed' && seg[1]) return seg[1];
-    }
-  } catch { /* noop */ }
-  return null;
-}
-function getYouTubeThumb(url: string): string | null {
-  const id = getYouTubeId(url);
-  return id ? `https://img.youtube.com/vi/${id}/hqdefault.jpg` : null;
 }
 
 function PageLink({
@@ -188,11 +167,10 @@ export default async function VideosPage({
   if (!data) notFound();
 
   const { articles, pageNo, pages } = data;
-  const items = (articles || []).filter((a) => a.videoUrl); // احتياطي
+  const items = (articles || []).filter((a) => a.videoUrl);
 
   return (
     <main className="max-w-6xl mx-auto px-4 pt-20 pb-20">
-
       {items.length === 0 ? (
         <EmptyState locale={locale} />
       ) : (
@@ -200,7 +178,7 @@ export default async function VideosPage({
           <section className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {items.map((a) => {
               const href = `/${locale}/articles/${a.slug}`;
-              const ytThumb = a.videoUrl ? getYouTubeThumb(a.videoUrl) : null;
+              const ytThumb = a.videoUrl ? getYouTubeThumb(a.videoUrl) : null; // ✅ من utils
               const cover = ytThumb || a.coverUrl || '';
 
               return (
@@ -208,7 +186,6 @@ export default async function VideosPage({
                   key={a._id ?? a.slug}
                   className="group relative rounded-xl border border-zinc-800 bg-gray-900/90 p-3 shadow-sm transition hover:shadow-lg hover:border-zinc-700 focus-within:ring-2 focus-within:ring-blue-500/40"
                 >
-                  {/* stretched link يجعل الكارت كله قابل للنقر */}
                   <Link
                     href={href}
                     className="absolute inset-0 z-10 rounded-xl"
@@ -233,7 +210,6 @@ export default async function VideosPage({
                         </div>
                       )}
 
-                      {/* أيقونة تشغيل لمعاينة الفيديو */}
                       <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
                         <div className="rounded-full bg-black/40 p-3 backdrop-blur-md ring-1 ring-white/20 transition group-hover:bg-black/50">
                           <svg width="28" height="28" viewBox="0 0 24 24" fill="none" aria-hidden>
@@ -243,7 +219,6 @@ export default async function VideosPage({
                         </div>
                       </div>
 
-                      {/* شارة فيديو — ألوان أوضح */}
                       <span
                         className="absolute left-2 top-2 rounded-full bg-rose-500 px-2 py-0.5 text-[10px] font-semibold text-white shadow ring-1 ring-white/15"
                         aria-label={locale === 'pl' ? 'Wideo' : 'Video'}
