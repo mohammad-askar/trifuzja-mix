@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import ArticleCard from '@/app/components/ArticleCard';
 import toast from 'react-hot-toast';
 
@@ -29,7 +29,7 @@ type ApiListResponse =
 
 const EFFECTIVE_LOCALE: Locale = 'pl';
 const LIMIT = 9;
-const MAX_AUTO_PAGES = 1; // ✅ عدد الصفحات المسموح بها تلقائيًا (تمرير لانهائي)
+const MAX_AUTO_PAGES = 1;
 
 function getErrorMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
@@ -69,10 +69,10 @@ export default function ArticlesList({ catsParam }: Props) {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [autoPages, setAutoPages] = useState(1); // ✅ كم صفحة تم تحميلها تلقائيًا حتى الآن
+  const [autoPages, setAutoPages] = useState(1);
   const hasMore = items.length < total;
 
-  // تحميل الصفحة الأولى / إعادة الضبط على تغيّر الفلاتر
+  // الصفحة الأولى
   const firstAbort = useRef<AbortController | null>(null);
   useEffect(() => {
     firstAbort.current?.abort();
@@ -88,7 +88,7 @@ export default function ArticlesList({ catsParam }: Props) {
         setItems(list);
         setTotal(t);
         setPage(1);
-        setAutoPages(1); // إعادة عداد الصفحات التلقائية
+        setAutoPages(1);
       } catch (e) {
         if (!controller.signal.aborted) {
           console.error(e);
@@ -106,67 +106,70 @@ export default function ArticlesList({ catsParam }: Props) {
     return () => controller.abort();
   }, [cats]);
 
-  // تحميل صفحة تالية (مشتركة بين التلقائي والزر)
+  // --- ⬇️ لفّ دالة التحميل بـ useCallback وأدرجها في deps ---
   const moreAbort = useRef<AbortController | null>(null);
   const loadingMoreRef = useRef(false);
 
-  async function loadNextPage(opts?: { manual?: boolean }) {
-    const manual = !!opts?.manual;
-    if (!hasMore) return;
-    if (!manual && autoPages >= MAX_AUTO_PAGES) return; // أوقف التمرير التلقائي بعد الحد
+  const loadNextPage = useCallback(
+    async (opts?: { manual?: boolean }) => {
+      const manual = !!opts?.manual;
+      if (!hasMore) return;
+      if (!manual && autoPages >= MAX_AUTO_PAGES) return;
 
-    moreAbort.current?.abort();
-    const controller = new AbortController();
-    moreAbort.current = controller;
+      moreAbort.current?.abort();
+      const controller = new AbortController();
+      moreAbort.current = controller;
 
-    try {
-      loadingMoreRef.current = true;
-      setLoading(true);
-      const next = page + 1;
-      const { list } = await fetchPage({
-        cats, pageNo: next, limit: LIMIT, signal: controller.signal,
-      });
+      try {
+        loadingMoreRef.current = true;
+        setLoading(true);
+        const next = page + 1;
+        const { list } = await fetchPage({
+          cats, pageNo: next, limit: LIMIT, signal: controller.signal,
+        });
 
-      if (list.length === 0) {
-        // أحيانًا total أكبر لكن الصفحة التالية فاضية: أغلق المزيد
-        setTotal((prev) => Math.max(prev, items.length));
-        return;
+        if (list.length === 0) {
+          setTotal((prev) => Math.max(prev, items.length));
+          return;
+        }
+
+        setItems((prev) => [...prev, ...list]);
+        setPage(next);
+        if (!manual) setAutoPages((p) => p + 1);
+      } catch (e) {
+        if (!controller.signal.aborted) {
+          console.error(e);
+          toast.error(getErrorMessage(e));
+        }
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
+        loadingMoreRef.current = false;
       }
+    },
+    [cats, page, hasMore, autoPages, items.length], // ← اعتمادات صحيحة
+  );
+  // --- ⬆️ ---
 
-      setItems((prev) => [...prev, ...list]);
-      setPage(next);
-      if (!manual) setAutoPages((p) => p + 1);
-    } catch (e) {
-      if (!controller.signal.aborted) {
-        console.error(e);
-        toast.error(getErrorMessage(e));
-      }
-    } finally {
-      if (!controller.signal.aborted) setLoading(false);
-      loadingMoreRef.current = false;
-    }
-  }
-
-  // تمرير لانهائي: يعمل فقط قبل الوصول إلى حد الصفحات التلقائي
+  // المراقب (تمرير تلقائي) — الآن نُضمِّن loadNextPage في deps
   const sentinel = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!sentinel.current) return;
     if (!hasMore) return;
-    if (autoPages >= MAX_AUTO_PAGES) return; // توقف التلقائي، انتظر الزر
+    if (autoPages >= MAX_AUTO_PAGES) return;
 
     const io = new IntersectionObserver(
       (entries) => {
         const hit = entries[0]?.isIntersecting ?? false;
         if (!hit) return;
         if (loadingMoreRef.current) return;
-        loadNextPage(); // تلقائي
+        void loadNextPage(); // تلقائي
       },
       { rootMargin: '300px', threshold: 0.1 },
     );
 
     io.observe(sentinel.current);
     return () => io.disconnect();
-  }, [hasMore, autoPages]); // بدون إدخال loading/items.length لتجنب إلغاء مبكر
+  }, [hasMore, autoPages, loadNextPage]); // ✅ التحذير انتهى
 
   const Skel = () => (
     <div className="rounded-2xl overflow-hidden bg-zinc-200 dark:bg-zinc-800 animate-pulse h-72" />
@@ -179,75 +182,52 @@ export default function ArticlesList({ catsParam }: Props) {
           <ArticleCard key={a._id} article={a} locale={EFFECTIVE_LOCALE} />
         ))}
 
-        {/* سكيليتون أول صفحة */}
         {loading && page === 1 &&
           Array.from({ length: LIMIT }).map((_, i) => <Skel key={`init-${i}`} />)}
 
-        {/* سكيليتون مزيد — فقط لو فيه مزيد وتلقائي مسموح */}
         {loading && page > 1 && hasMore && autoPages < MAX_AUTO_PAGES &&
           Array.from({ length: 3 }).map((_, i) => <Skel key={`more-${i}`} />)}
 
-        {/* حالة لا يوجد مقالات */}
         {!loading && items.length === 0 && (
           <p className="col-span-full text-center py-10 text-zinc-600 dark:text-zinc-400">
             Brak artykułów.
           </p>
         )}
 
-        {/* زر "عرض المزيد" بعد الوصول للحدّ */}
-{hasMore && autoPages >= MAX_AUTO_PAGES && (
-  <div className="col-span-full flex justify-center mt-2">
-    <button
-      onClick={() => loadNextPage({ manual: true })}
-      disabled={loading}
-      aria-busy={loading ? true : undefined}
-      className="inline-flex items-center gap-2 rounded-full px-5 py-3
-                 bg-gradient-to-r from-rose-600 to-red-600
-                 text-white font-medium
-                 shadow-lg shadow-red-500/20
-                 hover:from-rose-500 hover:to-red-500
-                 active:scale-[.98]
-                 transition
-                 focus:outline-none focus-visible:ring-2
-                 focus-visible:ring-offset-2 focus-visible:ring-red-500
-                 disabled:opacity-60 disabled:cursor-not-allowed"
-    >
-      {loading ? (
-        <>
-          {/* سبينر */}
-          <svg
-            className="h-4 w-4 animate-spin"
-            viewBox="0 0 24 24"
-            fill="none"
-            aria-hidden="true"
-          >
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-            <path className="opacity-75" fill="currentColor"
-              d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
-          </svg>
-          <span>Ładowanie…</span>
-        </>
-      ) : (
-        <>
-          <span>Pokaż więcej</span>
-          {/* سهم للأسفل بسيط */}
-          <svg
-            className="h-4 w-4"
-            viewBox="0 0 20 20"
-            fill="currentColor"
-            aria-hidden="true"
-          >
-            <path d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 011.08 1.04l-4.25 4.25a.75.75 0 01-1.06 0L5.21 8.27a.75.75 0 01.02-1.06z" />
-          </svg>
-        </>
-      )}
-    </button>
-  </div>
-)}
-
+        {hasMore && autoPages >= MAX_AUTO_PAGES && (
+          <div className="col-span-full flex justify-center mt-2">
+            <button
+              onClick={() => loadNextPage({ manual: true })}
+              disabled={loading}
+              aria-busy={loading || undefined}
+              className="inline-flex items-center gap-2 rounded-full px-5 py-3
+                         bg-gradient-to-r from-rose-600 to-red-600 text-white font-medium
+                         shadow-lg shadow-red-500/20 hover:from-rose-500 hover:to-red-500
+                         active:scale-[.98] transition focus:outline-none
+                         focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-red-500
+                         disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {loading ? (
+                <>
+                  <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
+                  </svg>
+                  <span>Ładowanie…</span>
+                </>
+              ) : (
+                <>
+                  <span>Pokaż więcej</span>
+                  <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                    <path d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 011.08 1.04l-4.25 4.25a.75.75 0 01-1.06 0L5.21 8.27a.75.75 0 01.02-1.06z" />
+                  </svg>
+                </>
+              )}
+            </button>
+          </div>
+        )}
       </section>
 
-      {/* السنتينل صغير جداً (لا يعمل بعد الوصول للحدّ) */}
       <div ref={sentinel} style={{ height: 1 }} aria-hidden="true" />
     </>
   );
