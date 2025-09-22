@@ -123,7 +123,7 @@ export default function VideosClient({
 
   const topRef = useRef<HTMLDivElement>(null);
 
-  // إذا تغيّر initialPage بسبب تنقل SSR، نزامن الحالة
+  // مزامنة عند تنقّل SSR
   useEffect(() => {
     setItems(initialItems);
     setPage(initialPage);
@@ -147,7 +147,7 @@ export default function VideosClient({
     setPage(data.pageNo);
 
     // تمرير لأعلى مع تعويض الهيدر
-    const HEADER_OFFSET = 88; // ← عدّلها حسب ارتفاع الهيدر لديك
+    const HEADER_OFFSET = 88; // عدّلها حسب ارتفاع الهيدر لديك
     const topY =
       (topRef.current?.getBoundingClientRect().top ?? 0) + window.scrollY - HEADER_OFFSET;
 
@@ -173,7 +173,6 @@ export default function VideosClient({
     [locale],
   );
 
-  // نطاق العناصر المعروضة (سطر عدّاد صغير)
   const rangeLabel = useMemo(() => {
     if (total <= 0) return '';
     const start = (page - 1) * limit + 1;
@@ -181,12 +180,27 @@ export default function VideosClient({
     return `${t.showing} ${start}–${end} ${t.of} ${total} ${t.videos}`;
   }, [page, limit, total, t]);
 
+  /* ========= أزرار الترقيم (أنماط جاهزة لإعادة الاستخدام) ========= */
+  const baseBtn =
+    'inline-flex items-center justify-center rounded-full transition select-none ' +
+    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 ' +
+    'dark:focus-visible:ring-offset-zinc-900 disabled:opacity-40 disabled:pointer-events-none';
+
+  const ghostBtn =
+    baseBtn +
+    ' border text-zinc-800 border-zinc-300 bg-white hover:bg-zinc-100 ' +
+    'dark:text-zinc-200 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:bg-zinc-800';
+
+  const activeBtn =
+    baseBtn +
+    ' text-white bg-gradient-to-r from-sky-600 via-indigo-600 to-fuchsia-600 shadow-lg shadow-indigo-500/25';
+
+  /* ========= العرض ========= */
   return (
     <>
-      {/* مرجع أعلى القسم للتمرير */}
       <div ref={topRef} tabIndex={-1} aria-hidden className="h-0" />
 
-      {/* عدّاد صغير اختياري */}
+      {/* عدّاد صغير */}
       <div className="mb-4 text-xs text-zinc-600 dark:text-zinc-400">
         {rangeLabel}
       </div>
@@ -272,89 +286,104 @@ export default function VideosClient({
             })}
           </section>
 
-          {/* Pagination مع ألوان واضحة */}
+          {/* ========== Pagination متجاوب ========== */}
           {pages > 1 && (
-            <nav
-              className="mt-10 flex items-center justify-center gap-2"
-              role="navigation"
-              aria-label="Pagination"
-            >
-              <button
-                onClick={() => changePage(1)}
-                disabled={page <= 1 || loading}
-                className="inline-flex items-center rounded-full px-3 py-1.5 text-sm
-                           border text-zinc-800 border-zinc-300 bg-white hover:bg-zinc-100
-                           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2
-                           dark:text-zinc-200 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:bg-zinc-800 dark:focus-visible:ring-offset-zinc-900
-                           disabled:opacity-40 disabled:pointer-events-none"
-                aria-label={locale === 'pl' ? 'Pierwsza' : 'First'}
+            <>
+              {/* موبايل: نمط مبسّط */}
+              <nav
+                className="mt-8 flex items-center justify-between gap-3 md:hidden"
+                role="navigation"
+                aria-label="Pagination"
               >
-                « {locale === 'pl' ? 'Pierwsza' : 'First'}
-              </button>
-              <button
-                onClick={() => changePage(page - 1)}
-                disabled={page <= 1 || loading}
-                className="inline-flex items-center rounded-full px-3 py-1.5 text-sm
-                           border text-zinc-800 border-zinc-300 bg-white hover:bg-zinc-100
-                           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2
-                           dark:text-zinc-200 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:bg-zinc-800 dark:focus-visible:ring-offset-zinc-900
-                           disabled:opacity-40 disabled:pointer-events-none"
-                aria-label={locale === 'pl' ? 'Poprzednia' : 'Prev'}
-              >
-                ‹ {locale === 'pl' ? 'Poprzednia' : 'Prev'}
-              </button>
+                <button
+                  onClick={() => changePage(page - 1)}
+                  disabled={page <= 1 || loading}
+                  className={`${ghostBtn} h-11 min-w-[44px] px-4 text-sm`}
+                  aria-label={t.prev}
+                >
+                  ‹ {t.prev}
+                </button>
 
-              {buildPageWindow(page, pages, 2).map((p, idx) =>
-                p === '…' ? (
-                  <span key={`dots-${idx}`} className="px-2 text-zinc-500 select-none" aria-hidden>…</span>
-                ) : (
-                  <button
-                    key={p}
-                    onClick={() => changePage(p)}
-                    aria-current={p === page ? 'page' : undefined}
-                    aria-label={`${t.page} ${p}`}
-                    className={[
-                      'inline-flex items-center justify-center rounded-full px-4 py-2 text-sm transition',
-                      p === page
-                        ? 'text-white bg-gradient-to-r from-sky-600 via-indigo-600 to-fuchsia-600 shadow-lg shadow-indigo-500/25 ' +
-                          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 ' +
-                          'dark:focus-visible:ring-offset-zinc-900'
-                        : 'border text-zinc-800 border-zinc-300 bg-white hover:bg-zinc-100 ' +
-                          'dark:text-zinc-200 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:bg-zinc-800 ' +
-                          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 ' +
-                          'dark:focus-visible:ring-offset-zinc-900',
-                    ].join(' ')}
-                  >
-                    {p}
-                  </button>
-                )
-              )}
+                <span
+                  className={`${activeBtn} h-11 min-w-[44px] px-5 text-sm`}
+                  aria-current="page"
+                >
+                  {page} / {pages}
+                </span>
 
-              <button
-                onClick={() => changePage(page + 1)}
-                disabled={page >= pages || loading}
-                className="inline-flex items-center rounded-full px-3 py-1.5 text-sm
-                           border text-zinc-800 border-zinc-300 bg-white hover:bg-zinc-100
-                           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2
-                           dark:text-zinc-200 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:bg-zinc-800 dark:focus-visible:ring-offset-zinc-900
-                           disabled:opacity-40 disabled:pointer-events-none"
-                aria-label={locale === 'pl' ? 'Następna' : 'Next'}
+                <button
+                  onClick={() => changePage(page + 1)}
+                  disabled={page >= pages || loading}
+                  className={`${ghostBtn} h-11 min-w-[44px] px-4 text-sm`}
+                  aria-label={t.next}
+                >
+                  {t.next} ›
+                </button>
+              </nav>
+
+              {/* شاشات md وما فوق: النمط الكامل */}
+              <nav
+                className="mt-8 hidden md:flex items-center justify-center flex-wrap gap-2"
+                role="navigation"
+                aria-label="Pagination"
               >
-                {locale === 'pl' ? 'Następna' : 'Next'} ›
-              </button>
-              <button
-                onClick={() => changePage(pages)}
-                disabled={page >= pages || loading}
-                className="inline-flex items-center rounded-full px-3 py-1.5 text-sm
-                           border text-zinc-800 border-zinc-300 bg-white hover:bg-zinc-100
-                           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2
-                           dark:text-zinc-200 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:bg-zinc-800 dark:focus-visible:ring-offset-zinc-900
-                           disabled:opacity-40 disabled:pointer-events-none"
-                aria-label={locale === 'pl' ? 'Ostatnia' : 'Last'}
-              >
-                {locale === 'pl' ? 'Ostatnia' : 'Last'} »
-              </button>
-            </nav>
+                <button
+                  onClick={() => changePage(1)}
+                  disabled={page <= 1 || loading}
+                  className={`${ghostBtn} h-10 min-w-[44px] px-3 text-sm`}
+                  aria-label={t.first}
+                >
+                  « {t.first}
+                </button>
+
+                <button
+                  onClick={() => changePage(page - 1)}
+                  disabled={page <= 1 || loading}
+                  className={`${ghostBtn} h-10 min-w-[44px] px-3 text-sm`}
+                  aria-label={t.prev}
+                >
+                  ‹ {t.prev}
+                </button>
+
+                {buildPageWindow(page, pages, 2).map((p, idx) =>
+                  p === '…' ? (
+                    <span key={`dots-${idx}`} className="px-2 text-zinc-500 select-none" aria-hidden>
+                      …
+                    </span>
+                  ) : (
+                    <button
+                      key={p}
+                      onClick={() => changePage(p)}
+                      aria-current={p === page ? 'page' : undefined}
+                      aria-label={`${t.page} ${p}`}
+                      className={[
+                        p === page ? `${activeBtn} h-10 px-4 text-sm` : `${ghostBtn} h-10 px-4 text-sm`,
+                      ].join(' ')}
+                    >
+                      {p}
+                    </button>
+                  )
+                )}
+
+                <button
+                  onClick={() => changePage(page + 1)}
+                  disabled={page >= pages || loading}
+                  className={`${ghostBtn} h-10 min-w-[44px] px-3 text-sm`}
+                  aria-label={t.next}
+                >
+                  {t.next} ›
+                </button>
+
+                <button
+                  onClick={() => changePage(pages)}
+                  disabled={page >= pages || loading}
+                  className={`${ghostBtn} h-10 min-w-[44px] px-3 text-sm`}
+                  aria-label={t.last}
+                >
+                  {t.last} »
+                </button>
+              </nav>
+            </>
           )}
         </>
       )}

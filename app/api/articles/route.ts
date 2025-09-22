@@ -70,49 +70,63 @@ function isEffectivelyEmpty(html?: string): boolean {
 /*                               GET (list)                           */
 /* ------------------------------------------------------------------ */
 /**
- * الاستعلامات المدعومة:
+ * Supported query params:
  * - ?pageNo=1&limit=9
- * - ?cat=catId  أو ?cat=cat1,cat2  أو تكرار cat عدة مرات
- * - ?videoOnly=1  ← يجلب فقط الفيديوهات
- * يرجع فقط المنشور، وكذلك السجلات القديمة التي قد لا تملك status.
+ * - ?cat=catId  or ?cat=cat1,cat2  or repeated ?cat=...
+ * - ?videoOnly=1 (videos only)
+ * - ?search=foo  (NEW: case-insensitive match on title or slug)
  */
 export async function GET(req: NextRequest) {
   try {
     const SearchSchema = z.object({
       pageNo: z.coerce.number().int().min(1).default(1),
-      limit: z.coerce.number().int().min(1).max(50).default(9),
+      limit : z.coerce.number().int().min(1).max(50).default(9),
       videoOnly: z.union([z.literal('1'), z.literal('true')]).optional(),
+      // NOTE: we read `search` manually below, because Object.fromEntries drops duplicate keys (cat)
     });
 
     const rawParams = Object.fromEntries(req.nextUrl.searchParams);
     const qp = SearchSchema.parse(rawParams);
 
-    // (?cat=... — يسمح بعدّة قيَم)
+    // categories: allow multiples
     const catsArray = req.nextUrl.searchParams
       .getAll('cat')
-      .flatMap((v) => v.split(',').map((s) => s.trim()).filter(Boolean));
+      .flatMap(v => v.split(',').map(s => s.trim()).filter(Boolean));
 
-    // فقط المنشور، أو وثائق قديمة بلا status (توافق رجعي)
+    // --- NEW: search term ---
+    const searchRaw = (req.nextUrl.searchParams.get('search') ?? '').trim();
+
+    // helper to escape user input for regex
+    const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+    // Only published (or legacy docs without status)
     const filter: Filter<ArticleDoc> = {
       $or: [{ status: 'published' }, { status: { $exists: false } }],
     };
 
-    // فلترة التصنيفات
+    // categories
     if (catsArray.length === 1) {
       filter.categoryId = catsArray[0];
     } else if (catsArray.length > 1) {
       filter.categoryId = { $in: catsArray };
     }
 
-    // 🎯 السياسة الجديدة:
-    // - بشكل افتراضي: استبعد الفيديوهات (isVideoOnly !== true)
-    // - عند videoOnly=1: اجلب الفيديوهات فقط
+    // videos vs. articles
     if (qp.videoOnly) {
       filter.isVideoOnly = true;
-      // كتحسّب إضافي: تأكد من وجود videoUrl غير فارغ
       (filter as Record<string, unknown>).videoUrl = { $exists: true, $ne: '' };
     } else {
-      filter.isVideoOnly = { $ne: true }; // يشمل الوثائق التي لا تملك الحقل
+      filter.isVideoOnly = { $ne: true };
+    }
+
+    // --- NEW: apply search on title OR slug (case-insensitive) ---
+    if (searchRaw.length > 0) {
+      const rx = new RegExp(escapeRegExp(searchRaw), 'i');
+      const and = (filter as Record<string, unknown>).$and as object[] | undefined;
+      (filter as Record<string, unknown>).$and = [
+        ...(and ?? []),
+        { $or: [{ title: rx }, { slug: rx }] },
+      ];
     }
 
     const db = (await clientPromise).db();
@@ -120,7 +134,6 @@ export async function GET(req: NextRequest) {
 
     const skip = (qp.pageNo - 1) * qp.limit;
 
-    // إسقاط المحتوى الكبير من القائمة (نُظهر الملخّص فقط)
     const cursor = coll
       .find(filter, {
         projection: {
@@ -153,8 +166,8 @@ export async function GET(req: NextRequest) {
       categoryId: d.categoryId,
       coverUrl: d.coverUrl,
       videoUrl: d.videoUrl,
-      isVideoOnly: d.isVideoOnly === true, // ← دائمًا boolean
-      status: d.status, // ستكون 'published' أو غير موجودة في القديم
+      isVideoOnly: d.isVideoOnly === true,
+      status: d.status,
       createdAt: d.createdAt,
       updatedAt: d.updatedAt,
       readingTime: d.readingTime,
@@ -178,6 +191,7 @@ export async function GET(req: NextRequest) {
     return responseError('Server error', 500);
   }
 }
+
 
 /* ------------------------------------------------------------------ */
 /*                              POST (create)                         */

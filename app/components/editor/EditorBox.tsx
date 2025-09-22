@@ -1,3 +1,4 @@
+//E:\trifuzja-mix\app\components\editor\EditorBox.tsx
 'use client';
 
 import React from 'react';

@@ -1,59 +1,66 @@
+//E:\trifuzja-mix\app\components\editor\Excerpt.tsx
 'use client';
 
-import type { UseFormRegister, FieldErrors, Path } from 'react-hook-form';
+import type { UseFormRegisterReturn } from 'react-hook-form';
 
-type HasExcerpt = { excerpt?: string };
-
-type ExcerptProps<T extends HasExcerpt> = {
-  register: UseFormRegister<T>;
-  errors: FieldErrors<T>;
+type ExcerptProps = {
+  /** دالة تسجّل حقل excerpt فقط */
+  registerExcerpt: (name: 'excerpt') => UseFormRegisterReturn;
+  /** نص رسالة الخطأ (إن وجِدت) */
+  errorMessage?: string;
+  /** عدّاد الأحرف المعروض */
   valueLen: number;
+  /** Placeholder */
   placeholder: string;
+  /** عند true: نعرض ملاحظة أنه اختياري (لا نعطّله) */
   videoOnly: boolean;
+  /** ملاحظات اختيارية */
   notePL: string;
   noteEN: string;
 };
 
-export default function Excerpt<T extends HasExcerpt>({
-  register,
-  errors,
+export default function Excerpt({
+  registerExcerpt,
+  errorMessage,
   valueLen,
   placeholder,
   videoOnly,
   notePL,
-}: ExcerptProps<T>) {
-  // نضيق نوع الأخطاء إلى شكل يضمن وجود excerpt — بدون any
-  const excerptError = (errors as FieldErrors<HasExcerpt>).excerpt;
+  noteEN,
+}: ExcerptProps) {
+  const optionalNote = videoOnly ? (notePL || noteEN || '') : '';
 
   return (
     <div className="space-y-1">
       <textarea
-        {...register('excerpt' as Path<T>)}
+        {...registerExcerpt('excerpt')}
         rows={3}
         placeholder={placeholder}
-        disabled={videoOnly}
-        className={`w-full rounded-lg border px-3 py-2 bg-white dark:bg-zinc-900 resize-none
-                    focus:outline-none focus:ring-2 focus:ring-blue-500/40
-                    ${
-                      videoOnly
-                        ? 'opacity-60 cursor-not-allowed border-gray-300 dark:border-zinc-700'
-                        : excerptError
-                        ? 'border-red-600'
-                        : 'border-gray-300 dark:border-zinc-700'
-                    }`}
+        // لا نعطّله في وضع الفيديو — فقط نعرض أنه اختياري
+        disabled={false}
+        aria-invalid={!!errorMessage || undefined}
+        aria-describedby={optionalNote ? 'excerpt-note' : undefined}
+        className={[
+          'w-full rounded-lg border px-3 py-2 bg-white dark:bg-zinc-900 resize-none',
+          'focus:outline-none focus:ring-2 focus:ring-blue-500/40',
+          errorMessage
+            ? 'border-red-600'
+            : 'border-gray-300 dark:border-zinc-700',
+        ].join(' ')}
       />
+
       <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400">
-        {!videoOnly && excerptError && (
-          <span className="text-red-600">
-            {typeof excerptError.message === 'string' ? excerptError.message : String(excerptError.message ?? '')}
-          </span>
+        {errorMessage ? (
+          <span className="text-red-600">{errorMessage}</span>
+        ) : (
+          <span className="opacity-0 select-none">.</span>
         )}
         <span>{valueLen}/400</span>
       </div>
 
-      {videoOnly && (
-        <p className="text-xs text-gray-500">
-          {notePL /* أو noteEN من الأب حسب اللغة */}
+      {optionalNote && (
+        <p id="excerpt-note" className="text-xs text-gray-500">
+          {optionalNote}
         </p>
       )}
     </div>

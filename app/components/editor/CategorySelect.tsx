@@ -1,3 +1,4 @@
+//E:\trifuzja-mix\app\components\editor\CategorySelect.tsx
 'use client';
 
 import { useEffect, useState } from 'react';

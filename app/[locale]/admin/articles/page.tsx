@@ -1,4 +1,6 @@
-/* ── app/[locale]/admin/articles/page.tsx ─────────────────────────────── */
+// app/[locale]/admin/articles/page.tsx
+export const dynamic = 'force-dynamic';
+
 import { redirect }                  from 'next/navigation';
 import { getServerSession }          from 'next-auth';
 import { authOptions }               from '@/lib/authOptions';
@@ -49,11 +51,7 @@ const pickTitle = (t: RawRow['title'], l: Locale) =>
 
 const VALID_PAGES = new Set(PAGES.map(p => p.key));
 
-/**
- * نبني فلتر Mongo للبحث. لتفادي مشاكل الأنواع مع مفاتيح ذات notation منقط
- * مثل "title.en" و "title.pl"، ننشئ كائنًا عادياً ثم نحوله في موضع الاستخدام
- * إلى Filter<RawRow> عبر cast — بدون استخدام any.
- */
+/** نبني فلتر Mongo للبحث */
 function buildFilterRaw(
   q: string,
   pageKey?: string,
@@ -71,14 +69,11 @@ function buildFilterRaw(
   const trimmed = q.trim();
   if (trimmed) {
     const rx = new RegExp(trimmed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-
-    // نسمح بالبحث في slug + title.en + title.pl
     f.$or = [
       { slug: rx },
       { 'title.en': rx },
       { 'title.pl': rx },
-      // ولو كان العنوان مخزّن كسلسلة مباشرة (بعض السجلات القديمة)
-      { title: rx },
+      { title: rx }, // توافق مع سجلات قديمة
     ];
   }
 
@@ -98,7 +93,7 @@ function mapRows(raw: WithId<RawRow>[], locale: Locale): Row[] {
 }
 
 /* ------------------------------------------------------------------ */
-/* 🌐 ترجمات رأس الصفحة (واجهة فقط) */
+/* 🌐 ترجمات رأس الصفحة */
 /* ------------------------------------------------------------------ */
 const HEADINGS: Record<Locale, { title: string }> = {
   en: { title: 'Articles' },
@@ -114,7 +109,8 @@ export default async function AdminArticlesPage({
 }: {
   params: Promise<{ locale: Locale }>;
   searchParams: Promise<{
-    q?: string;
+    search?: string;  // ✅ المفتاح الجديد القادم من المكوّن
+    q?: string;       // ✅ دعم رجعي
     pageKey?: string;
     status?: string;
     limit?: string;
@@ -128,7 +124,7 @@ export default async function AdminArticlesPage({
 
   /* 2) قراءة استعلامات البحث */
   const sp           = await searchParams; // مهم: await
-  const q            = sp.q ?? '';
+  const q            = (sp.search ?? sp.q ?? '').trim(); // ✅ الأهم
   const pageKeyParam = sp.pageKey;
   const statusParam  = sp.status;
   const limit        = Math.min(100, Math.max(5, Number(sp.limit) || 20));
@@ -136,7 +132,6 @@ export default async function AdminArticlesPage({
   const skip         = (pageNo - 1) * limit;
 
   /* 3) الفلتر + الجلب */
-  // نبني فلتر غير مُقيّد بالأنواع ثم نحوّله إلى Filter<RawRow> عند الاستعمال.
   const filter = buildFilterRaw(q, pageKeyParam, statusParam) as Filter<RawRow>;
 
   const db   = (await clientPromise).db();
@@ -145,8 +140,7 @@ export default async function AdminArticlesPage({
   const [rawRows, total] = await Promise.all([
     coll
       .find(filter, {
-        // إسقاط المحتوى لتخفيف النقل — لا نحتاجه في الجدول
-        projection: { content: 0 },
+        projection: { content: 0 }, // تخفيف النقل
       })
       .sort({ createdAt: -1 })
       .skip(skip)
@@ -169,7 +163,7 @@ export default async function AdminArticlesPage({
         <CreateButton locale={locale} />
       </header>
 
-      {/* المرشّحات */}
+      {/* المرشّحات (تكتب ?search= في العنوان) */}
       <AdminArticlesFilters locale={locale} query={{ search: q }} />
 
       {/* الجدول */}

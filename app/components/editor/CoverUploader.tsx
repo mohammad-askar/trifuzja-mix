@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useRef } from 'react';
+import { useRef } from 'react';
 import CoverPreview from './CoverPreview';
 import type { CoverPosition } from './article.types';
 import { useUpload } from './hooks';
@@ -21,29 +21,7 @@ export default function CoverUploader({
   label: string;
 }) {
   const { getRootProps, getInputProps, isDragActive } = useUpload(locale, setCover);
-  const coverContainerRef = useRef<HTMLDivElement>(null);
-  const isDraggingRef = useRef(false);
-
-  const handleFocalMove = useCallback((x: number, y: number) => {
-    if (!coverContainerRef.current) return;
-    const rect = coverContainerRef.current.getBoundingClientRect();
-    const nx = Math.max(0, Math.min(100, ((x - rect.left) / rect.width) * 100));
-    const ny = Math.max(0, Math.min(100, ((y - rect.top) / rect.height) * 100));
-    setCoverPosition({ x: nx, y: ny });
-  }, [setCoverPosition]);
-
-  const onMouseMove = useCallback(
-    (e: MouseEvent) => {
-      if (isDraggingRef.current) handleFocalMove(e.clientX, e.clientY);
-    },
-    [handleFocalMove],
-  );
-  const onTouchMove = useCallback(
-    (e: TouchEvent) => {
-      if (isDraggingRef.current && e.touches[0]) handleFocalMove(e.touches[0].clientX, e.touches[0].clientY);
-    },
-    [handleFocalMove],
-  );
+  const coverContainerRef = useRef<HTMLDivElement | null>(null);
 
   return (
     <div>
@@ -58,9 +36,13 @@ export default function CoverUploader({
       >
         <input {...getInputProps()} />
         <p className="text-sm text-gray-500 dark:text-gray-400">
-          {isDragActive ? (locale === 'pl' ? 'Upuść, aby przesłać' : 'Drop to upload')
-                        : (locale === 'pl' ? 'Przeciągnij lub kliknij, aby przesłać'
-                                           : 'Drag & drop or click to upload')}
+          {isDragActive
+            ? locale === 'pl'
+              ? 'Upuść, aby przesłać'
+              : 'Drop to upload'
+            : locale === 'pl'
+              ? 'Przeciągnij lub kliknij, aby przesłać'
+              : 'Drag & drop or click to upload'}
         </p>
       </div>
 
@@ -71,20 +53,6 @@ export default function CoverUploader({
           setCover={setCover}
           setCoverPosition={setCoverPosition}
           coverContainerRef={coverContainerRef}
-          onMouseDownGlobal={(e) => {
-            e.preventDefault();
-            isDraggingRef.current = true;
-            window.addEventListener('mousemove', onMouseMove);
-            window.addEventListener('mouseup', () => {
-              isDraggingRef.current = false;
-              window.removeEventListener('mousemove', onMouseMove);
-            });
-            window.addEventListener('touchmove', onTouchMove, { passive: false });
-            window.addEventListener('touchend', () => {
-              isDraggingRef.current = false;
-              window.removeEventListener('touchmove', onTouchMove);
-            });
-          }}
         />
       )}
     </div>

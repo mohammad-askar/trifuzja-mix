@@ -1,3 +1,4 @@
+//E:\trifuzja-mix\app\components\ArticleEditor.tsx
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback, KeyboardEvent } from 'react';
@@ -77,12 +78,12 @@ export default function ArticleEditor({ locale, mode, defaultData = {}, onSaved 
   const [slugAvailable, setSlugAvailable] = useState<boolean | null>(isEdit ? true : null);
   const [dirty, setDirty] = useState(false);
 
-  const titleVal = watch('title');
-  const excerptVal = watch('excerpt') || '';
-  const categoryId = watch('categoryId') || '';
+  const titleVal    = watch('title');
+  const excerptVal  = watch('excerpt') || '';
+  const categoryId  = watch('categoryId') || '';
   const videoUrlVal = (watch('videoUrl') || '').trim();
 
-  const autoSlug = useMemo(() => makeSlug(titleVal), [titleVal]);
+  const autoSlug    = useMemo(() => makeSlug(titleVal), [titleVal]);
   const visibleSlug = isEdit ? (defaultData.slug as string) : autoSlug;
 
   const wordsCount = useMemo(
@@ -92,16 +93,20 @@ export default function ArticleEditor({ locale, mode, defaultData = {}, onSaved 
   const reading = readingTimeFromHtml(content, text.readTime);
 
   useEffect(() => {
+    // التبديل التلقائي لوضع الفيديو فقط عند وجود رابط فيديو
     if (videoUrlVal && !isVideoOnly) setIsVideoOnly(true);
+    // الرجوع تلقائياً لو اتشال الفيديو وكان الأصل فيديو فقط
     if (!videoUrlVal && isVideoOnly && initialVideoOnly) setIsVideoOnly(false);
   }, [videoUrlVal, isVideoOnly, initialVideoOnly]);
 
+  // الشروط الأساسية: في الفيديو فقط لا نطلب excerpt ولا category
   const basicsReady = isVideoOnly
     ? lenGT3(titleVal) && videoUrlVal.length > 0
     : lenGT3(titleVal) && lenGT3(excerptVal) && lenGT3(categoryId);
 
   const canSubmit = basicsReady && !isSubmitting && (isEdit || slugAvailable !== false);
 
+  // فحص توفر السِلغ
   const checkSlugAvailability = useCallback(async (slug: string) => {
     if (!slug || slug.length < 3) return setSlugAvailable(null);
     if (isEdit && defaultData.slug === slug) return setSlugAvailable(true);
@@ -125,13 +130,14 @@ export default function ArticleEditor({ locale, mode, defaultData = {}, onSaved 
     return () => window.removeEventListener('beforeunload', handler);
   }, [dirty]);
 
+  // أوتوسيف: لا نحذف excerpt أبداً — بس نخلي الـ content فاضي في وضع الفيديو
   const autosave = useCallback(async () => {
     if (!basicsReady || (!isEdit && slugAvailable === false)) return;
 
     const payload = {
       title: titleVal,
-      excerpt: excerptVal,
-      content: isVideoOnly ? '' : content,
+      excerpt: excerptVal,                    // ← دائماً معانا حتى في الفيديو فقط
+      content: isVideoOnly ? '' : content,    // ← النص فقط إن لم يكن فيديو فقط
       categoryId: isVideoOnly ? undefined : categoryId || undefined,
       coverUrl: cover || undefined,
       videoUrl: videoUrlVal || undefined,
@@ -169,7 +175,7 @@ export default function ArticleEditor({ locale, mode, defaultData = {}, onSaved 
     const slugForSubmit = visibleSlug;
     const payload = {
       title: fv.title,
-      excerpt: fv.excerpt,
+      excerpt: fv.excerpt,                     // ← دائماً ناخده
       content: isVideoOnly ? '' : content,
       categoryId: isVideoOnly ? undefined : fv.categoryId || undefined,
       coverUrl: cover || undefined,
@@ -214,14 +220,21 @@ export default function ArticleEditor({ locale, mode, defaultData = {}, onSaved 
       />
 
       <Excerpt
-        register={register}
-        errors={errors}
-        valueLen={(watch('excerpt') || '').length}
-        placeholder={text.excerpt}
-        videoOnly={isVideoOnly}
-        notePL="Tryb tylko wideo — opis nie jest wymagany."
-        noteEN="Video-only mode — summary is not required."
-      />
+  registerExcerpt={(name) => register(name)}            // 👈 نمرر wrapper لحقل excerpt
+  errorMessage={
+    typeof errors.excerpt?.message === 'string'
+      ? errors.excerpt.message
+      : errors.excerpt?.message
+        ? String(errors.excerpt.message)
+        : undefined
+  }
+  valueLen={(watch('excerpt') || '').length}
+  placeholder={text.excerpt}
+  videoOnly={isVideoOnly}           // يبقى اختياري في وضع الفيديو
+  notePL="Tryb tylko wideo — opis jest opcjonalny."
+  noteEN="Video-only mode — summary is optional."
+/>
+
 
       <CategorySelect
         label={text.cat}
