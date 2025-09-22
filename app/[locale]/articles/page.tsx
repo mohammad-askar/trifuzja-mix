@@ -82,34 +82,43 @@ function normalizeNameToPolish(input: unknown): string {
 
 /* ----------------------------- Page ------------------------------- */
 export default async function ArticlesHub({ params, searchParams }: Props) {
-  // 1) فكّ الوعود
   const { locale } = await params;
   const { cat } = await searchParams;
-
-  // 2) قراءة وسائط الفئة فقط (بدون page)
   const selectedCat: string[] = Array.isArray(cat) ? cat : cat ? [cat] : [];
 
-  // 3) جلب التصنيفات — نتعامل مع الحالتين: string أو {en,pl}
   const db = (await clientPromise).db();
+
+  // نرتّب حسب أحدث تعديل/إنشاء/ObjectId timestamp
   const raw = await db
     .collection<CategoryDbDoc>('categories')
-    .find({}, { projection: { name: 1 } })
+    .aggregate([
+      {
+        $project: {
+          name: 1,
+          createdAt: 1,
+          updatedAt: 1,
+          effectiveTS: {
+            $ifNull: [
+              '$updatedAt',
+              { $ifNull: ['$createdAt', { $toDate: '$_id' }] },
+            ],
+          },
+        },
+      },
+      { $sort: { effectiveTS: -1, _id: -1 } },
+    ])
     .toArray();
 
-  // 4) تطبيع إلى اسم بولندي واحد + فرز بولندي
-  const cats: CategoryUi[] = raw
-    .map((d) => ({
-      _id: d._id.toHexString(),
-      name: normalizeNameToPolish(d.name),
-    }))
-    .sort((a, b) => a.name.localeCompare(b.name, 'pl'));
+  const cats: CategoryUi[] = raw.map((d) => ({
+    _id: d._id.toHexString(),
+    name: normalizeNameToPolish(d.name),
+    // اختياري: يمكنك تمرير تاريخ العرض لو أردت Tooltip أو عرض التاريخ
+    // updatedAt: d.updatedAt ?? d.createdAt ?? d._id.getTimestamp()
+  }));
 
   return (
     <main className="max-w-6xl mt-3 mx-auto px-4 pt-10 pb-10">
-      {/* ✅ مكوّن الشيبس يستقبل الآن name: string (بولندي فقط) */}
       <CategoryChips categories={cats} selected={selectedCat} />
-
-      {/* ✅ ArticlesList داخليًا مجبَر على البولندية */}
       <ArticlesList
         locale={locale}
         catsParam={selectedCat.length ? selectedCat : null}

@@ -55,7 +55,7 @@ const CategoryCreateInput = z.object({
 });
 
 /* -------------------------------- GET ------------------------------ */
-/** يرجع كل التصنيفات (name: string, slug: string) مرتبة حسب البولندية فقط. */
+/** يرجع كل التصنيفات مرتبة حسب أحدث تعديل (updatedAt) ثم الإنشاء، بدقة حتى الثواني/الميلي. */
 export async function GET() {
   try {
     await requireAdmin();
@@ -63,24 +63,33 @@ export async function GET() {
     const db = (await clientPromise).db();
     const docs = await db
       .collection<CategoryDbDoc>('categories')
-      .find(
-        {},
+      .aggregate([
         {
-          projection: { name: 1, slug: 1, createdAt: 1, updatedAt: 1 },
+          $project: {
+            name: 1,
+            slug: 1,
+            createdAt: 1,
+            updatedAt: 1,
+            // تاريخ فعال: updatedAt ثم createdAt ثم توقيت الـ ObjectId
+            effectiveTS: {
+              $ifNull: [
+                '$updatedAt',
+                { $ifNull: ['$createdAt', { $toDate: '$_id' }] },
+              ],
+            },
+          },
         },
-      )
-      // لا نفرز هنا لأن name قد يكون بصيغ مختلفة
+        { $sort: { effectiveTS: -1, _id: -1 } }, // أحدث أولاً
+      ])
       .toArray();
 
-    const cats: CategoryAdminApiDoc[] = docs
-      .map((c) => ({
-        _id: c._id.toString(),
-        name: normalizeNameToPolish(c.name),
-        slug: c.slug,
-        createdAt: c.createdAt,
-        updatedAt: c.updatedAt,
-      }))
-      .sort((a, b) => a.name.localeCompare(b.name, 'pl'));
+    const cats: CategoryAdminApiDoc[] = docs.map((c) => ({
+      _id: c._id.toString(),
+      name: normalizeNameToPolish(c.name), // نحافظ على التطبيع
+      slug: c.slug,
+      createdAt: c.createdAt,
+      updatedAt: c.updatedAt,
+    }));
 
     return NextResponse.json(cats, { status: 200 });
   } catch (e) {
@@ -89,6 +98,7 @@ export async function GET() {
     return NextResponse.json({ error: 'Server error' }, { status });
   }
 }
+
 
 /* -------------------------------- POST ----------------------------- */
 /** إنشاء تصنيف جديد أحادي اللغة (بولندي)، مع فحص تكرار الـ slug على مستوى المجموعة. */
