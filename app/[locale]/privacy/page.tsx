@@ -1,4 +1,4 @@
-//E:\trifuzja-mix\app\[locale]\privacy\page.tsx
+// app/[locale]/privacy/page.tsx
 import type { Metadata } from 'next';
 
 export const dynamic = 'force-static';
@@ -6,13 +6,17 @@ export const dynamic = 'force-static';
 type Locale = 'en' | 'pl';
 const LOCALES: Locale[] = ['en', 'pl'];
 
+// اسم الموقع كمصدر وحيد للحقيقة
+const SITE_NAME = 'Initiativa Autonoma';
+
+// بيانات المزوّد (نستخدمها في قسم "Contact" بالسياسة)
 const PROVIDER = {
-  name: 'Initiativa Autonoma',
-  street: 'Street 1',
-  cityZip: '00-000 City',
-  country: 'Polska',
-  email: 'contact@example.com',
-};
+  legalName: 'Patrycja Konkowska',
+  brandName: SITE_NAME,
+  street: 'ul. Darzyborska 15B/7',
+  cityZip: '61-303 Poznań',
+  email: 'contact@example.com', // ← حدّثه ببريدك الرسمي عند توفره
+} as const;
 
 const i18n = {
   en: {
@@ -30,6 +34,8 @@ const i18n = {
     rights:
       'You have the right to access, rectify, erase, or restrict processing of your personal data. You may withdraw consent at any time without affecting the lawfulness of processing based on consent before its withdrawal.',
     contactH: 'Contact',
+    country: 'Poland',
+    providerLineLabel: 'Provider',
   },
   pl: {
     title: 'Polityka Prywatności',
@@ -46,6 +52,8 @@ const i18n = {
     rights:
       'Masz prawo dostępu do danych, ich sprostowania, usunięcia oraz ograniczenia przetwarzania. Możesz wycofać zgodę w dowolnym momencie – bez wpływu na zgodność z prawem przetwarzania sprzed wycofania.',
     contactH: 'Kontakt',
+    country: 'Polska',
+    providerLineLabel: 'Usługodawca',
   },
 } as const;
 
@@ -58,9 +66,11 @@ export async function generateMetadata({
   const loc: Locale = LOCALES.includes(locale) ? locale : 'en';
   const t = i18n[loc];
   return {
-    title: `${t.title} | Initiativa Autonoma`,
+    title: `${t.title} | ${SITE_NAME}`,
     description:
-      loc === 'pl' ? 'Polityka prywatności serwisu Initiativa Autonoma.' : 'Privacy policy of Initiativa Autonoma.',
+      loc === 'pl'
+        ? `Polityka prywatności serwisu ${SITE_NAME}.`
+        : `Privacy policy of ${SITE_NAME}.`,
     alternates: { canonical: `/${loc}/privacy` },
   };
 }
@@ -81,7 +91,7 @@ export default async function PrivacyPage({
   );
 
   return (
-    <main className="min-h-screen flex justify-center px-4 pt-22 pb-24 bg-gradient-to-br from-blue-50 via-sky-50 to-emerald-50 dark:from-zinc-800 dark:via-zinc-900 dark:to-zinc-950">
+    <main className="min-h-screen flex justify-center px-4 pt-18 pb-24 bg-gradient-to-br from-blue-50 via-sky-50 to-emerald-50 dark:from-zinc-800 dark:via-zinc-900 dark:to-zinc-950">
       <article className="w-full max-w-4xl rounded-3xl bg-white/85 dark:bg-zinc-900/85 shadow-xl ring-1 ring-gray-100 dark:ring-zinc-800 backdrop-blur-lg">
         <div className="h-[3px] w-full bg-gradient-to-r from-sky-500 via-indigo-500 to-fuchsia-600" />
         <div className="prose dark:prose-invert max-w-none px-6 md:px-10 py-6">
@@ -108,7 +118,9 @@ export default async function PrivacyPage({
 
           <h2>{t.contactH}</h2>
           <p>
-            {PROVIDER.name}, {PROVIDER.street}, {PROVIDER.cityZip}, {PROVIDER.country}.{' '}
+            <strong>{t.providerLineLabel}:</strong> {PROVIDER.legalName} &mdash; {PROVIDER.brandName}
+            <br />
+            {PROVIDER.street}, {PROVIDER.cityZip}, {t.country}.{' '}
             <strong>Email:</strong> {PROVIDER.email}
           </p>
         </div>

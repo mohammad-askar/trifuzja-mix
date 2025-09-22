@@ -1,3 +1,4 @@
+//E:\trifuzja-mix\app\components\ArticlesList.tsx
 'use client';
 
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
@@ -16,7 +17,7 @@ interface ArticleSummary {
   readingTime?: string;
   meta?: { coverPosition?: CoverPos };
   isVideoOnly?: boolean;
-  videoUrl?: string; // ✅ جديد: لازم علشان نطلع thumbnail يوتيوب في الكارت
+  videoUrl?: string;
 }
 
 interface Props {
@@ -28,10 +29,11 @@ type ApiListResponse =
   | ArticleSummary[]
   | { articles?: ArticleSummary[]; total?: number };
 
-const EFFECTIVE_LOCALE: Locale = 'pl';
+/* إعدادات */
+const DEFAULT_LOCALE: Locale = 'pl';
 const LIMIT = 9;
-const MAX_AUTO_PAGES = 1;
 
+/* ------------ Helpers ------------ */
 function getErrorMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
   try { return JSON.stringify(err); } catch { return String(err); }
@@ -41,13 +43,14 @@ async function fetchPage(opts: {
   cats: string[];
   pageNo: number;
   limit: number;
+  locale: Locale;
   signal?: AbortSignal;
 }): Promise<{ list: ArticleSummary[]; total: number }> {
-  const { cats, pageNo, limit, signal } = opts;
+  const { cats, pageNo, limit, locale, signal } = opts;
   const qs = new URLSearchParams({
     pageNo: String(pageNo),
     limit: String(limit),
-    locale: EFFECTIVE_LOCALE,
+    locale,
   });
   cats.forEach((id) => qs.append('cat', id));
 
@@ -60,7 +63,27 @@ async function fetchPage(opts: {
     : { list: data.articles ?? [], total: data.total ?? 0 };
 }
 
-export default function ArticlesList({ catsParam }: Props) {
+/** يبني نافذة ترقيم مثل: 1 … 3 4 [5] 6 7 … 20 */
+function buildPageWindow(current: number, totalPages: number, windowSize = 2): (number | '…')[] {
+  const pages: (number | '…')[] = [];
+  const add = (p: number | '…') => { if (pages[pages.length - 1] !== p) pages.push(p); };
+
+  const start = Math.max(2, current - windowSize);
+  const end = Math.min(totalPages - 1, current + windowSize);
+
+  add(1);
+  if (start > 2) add('…');
+  for (let p = start; p <= end; p++) add(p);
+  if (end < totalPages - 1) add('…');
+  if (totalPages > 1) add(totalPages);
+
+  return pages;
+}
+
+/* ------------ Component ------------ */
+export default function ArticlesList({ catsParam, locale }: Props) {
+  const effectiveLocale: Locale = locale ?? DEFAULT_LOCALE;
+
   const cats = useMemo<string[]>(
     () => (catsParam == null ? [] : Array.isArray(catsParam) ? catsParam : [catsParam]),
     [catsParam],
@@ -70,10 +93,13 @@ export default function ArticlesList({ catsParam }: Props) {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [autoPages, setAutoPages] = useState(1);
-  const hasMore = items.length < total;
 
-  // الصفحة الأولى
+  const totalPages = Math.max(1, Math.ceil(total / LIMIT));
+
+  // مرجع لأعلى الشبكة لتمرير سلس مع تعويض الهيدر
+  const topRef = useRef<HTMLDivElement>(null);
+
+  // تحميل أولي أو عند تغيير الفئات
   const firstAbort = useRef<AbortController | null>(null);
   useEffect(() => {
     firstAbort.current?.abort();
@@ -84,20 +110,16 @@ export default function ArticlesList({ catsParam }: Props) {
       setLoading(true);
       try {
         const { list, total: t } = await fetchPage({
-          cats, pageNo: 1, limit: LIMIT, signal: controller.signal,
+          cats, pageNo: 1, limit: LIMIT, locale: effectiveLocale, signal: controller.signal,
         });
         setItems(list);
         setTotal(t);
         setPage(1);
-        setAutoPages(1);
       } catch (e) {
         if (!controller.signal.aborted) {
           console.error(e);
           toast.error(getErrorMessage(e));
-          setItems([]);
-          setTotal(0);
-          setPage(1);
-          setAutoPages(1);
+          setItems([]); setTotal(0); setPage(1);
         }
       } finally {
         if (!controller.signal.aborted) setLoading(false);
@@ -105,130 +127,170 @@ export default function ArticlesList({ catsParam }: Props) {
     })();
 
     return () => controller.abort();
-  }, [cats]);
+  }, [cats, effectiveLocale]);
 
-  // تحميل المزيد
-  const moreAbort = useRef<AbortController | null>(null);
-  const loadingMoreRef = useRef(false);
+  // تغيير الصفحة + تمرير لأعلى مع تعويض الهيدر
+  const changePage = useCallback(async (target: number) => {
+    if (target < 1 || target > totalPages || target === page) return;
 
-  const loadNextPage = useCallback(
-    async (opts?: { manual?: boolean }) => {
-      const manual = !!opts?.manual;
-      if (!hasMore) return;
-      if (!manual && autoPages >= MAX_AUTO_PAGES) return;
+    const controller = new AbortController();
+    try {
+      setLoading(true);
+      const { list } = await fetchPage({
+        cats, pageNo: target, limit: LIMIT, locale: effectiveLocale, signal: controller.signal,
+      });
+      setItems(list);
+      setPage(target);
 
-      moreAbort.current?.abort();
-      const controller = new AbortController();
-      moreAbort.current = controller;
+      // تمرير لأعلى الشبكة (تعويض الهيدر الثابت)
+      if (typeof window !== 'undefined') {
+        const HEADER_OFFSET = 88; // ← عدّلها حسب ارتفاع الهيدر لديك
+        const topY =
+          (topRef.current?.getBoundingClientRect().top ?? 0) +
+          window.scrollY -
+          HEADER_OFFSET;
 
-      try {
-        loadingMoreRef.current = true;
-        setLoading(true);
-        const next = page + 1;
-        const { list } = await fetchPage({
-          cats, pageNo: next, limit: LIMIT, signal: controller.signal,
-        });
-
-        if (list.length === 0) {
-          setTotal((prev) => Math.max(prev, items.length));
-          return;
-        }
-
-        setItems((prev) => [...prev, ...list]);
-        setPage(next);
-        if (!manual) setAutoPages((p) => p + 1);
-      } catch (e) {
-        if (!controller.signal.aborted) {
-          console.error(e);
-          toast.error(getErrorMessage(e));
-        }
-      } finally {
-        if (!controller.signal.aborted) setLoading(false);
-        loadingMoreRef.current = false;
+        window.scrollTo({ top: Math.max(0, topY), behavior: 'smooth' });
+        setTimeout(() => topRef.current?.focus({ preventScroll: true }), 350);
       }
-    },
-    [cats, page, hasMore, autoPages, items.length],
-  );
+    } catch (e) {
+      if (!controller.signal.aborted) {
+        console.error(e);
+        toast.error(getErrorMessage(e));
+      }
+    } finally {
+      if (!controller.signal.aborted) setLoading(false);
+    }
+  }, [cats, effectiveLocale, page, totalPages]);
 
-  // مراقب التمرير
-  const sentinel = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!sentinel.current) return;
-    if (!hasMore) return;
-    if (autoPages >= MAX_AUTO_PAGES) return;
-
-    const io = new IntersectionObserver(
-      (entries) => {
-        const hit = entries[0]?.isIntersecting ?? false;
-        if (!hit) return;
-        if (loadingMoreRef.current) return;
-        void loadNextPage();
-      },
-      { rootMargin: '300px', threshold: 0.1 },
-    );
-
-    io.observe(sentinel.current);
-    return () => io.disconnect();
-  }, [hasMore, autoPages, loadNextPage]);
-
+  /* ------ UI ------ */
   const Skel = () => (
     <div className="rounded-2xl overflow-hidden bg-zinc-200 dark:bg-zinc-800 animate-pulse h-72" />
   );
 
+  const t = {
+    prev: effectiveLocale === 'pl' ? 'Poprzednia' : 'Prev',
+    next: effectiveLocale === 'pl' ? 'Następna' : 'Next',
+    first: effectiveLocale === 'pl' ? 'Pierwsza' : 'First',
+    last: effectiveLocale === 'pl' ? 'Ostatnia' : 'Last',
+    page: effectiveLocale === 'pl' ? 'Strona' : 'Page',
+  };
+
   return (
     <>
+      {/* مرجع أعلى الشبكة لتحسين التمرير والتركيز */}
+      <div ref={topRef} tabIndex={-1} aria-hidden className="h-0" />
+
       <section className="grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
         {items.map((a) => (
-          <ArticleCard key={a._id} article={a} locale={EFFECTIVE_LOCALE} />
+          <ArticleCard key={a._id} article={a} locale={effectiveLocale} />
         ))}
 
-        {loading && page === 1 &&
+        {loading && items.length === 0 &&
           Array.from({ length: LIMIT }).map((_, i) => <Skel key={`init-${i}`} />)}
-
-        {loading && page > 1 && hasMore && autoPages < MAX_AUTO_PAGES &&
-          Array.from({ length: 3 }).map((_, i) => <Skel key={`more-${i}`} />)}
 
         {!loading && items.length === 0 && (
           <p className="col-span-full text-center py-10 text-zinc-600 dark:text-zinc-400">
-            Brak artykułów.
+            {effectiveLocale === 'pl' ? 'Brak artykułów.' : 'No articles.'}
           </p>
-        )}
-
-        {hasMore && autoPages >= MAX_AUTO_PAGES && (
-          <div className="col-span-full flex justify-center mt-2">
-            <button
-              onClick={() => loadNextPage({ manual: true })}
-              disabled={loading}
-              aria-busy={loading || undefined}
-              className="inline-flex items-center gap-2 rounded-full px-5 py-3
-                         bg-gradient-to-r from-rose-600 to-red-600 text-white font-medium
-                         shadow-lg shadow-red-500/20 hover:from-rose-500 hover:to-red-500
-                         active:scale-[.98] transition focus:outline-none
-                         focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-red-500
-                         disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              {loading ? (
-                <>
-                  <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
-                  </svg>
-                  <span>Ładowanie…</span>
-                </>
-              ) : (
-                <>
-                  <span>Pokaż więcej</span>
-                  <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                    <path d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 011.08 1.04l-4.25 4.25a.75.75 0 01-1.06 0L5.21 8.27a.75.75 0 01.02-1.06z" />
-                  </svg>
-                </>
-              )}
-            </button>
-          </div>
         )}
       </section>
 
-      <div ref={sentinel} style={{ height: 1 }} aria-hidden="true" />
+      {/* شريط الترقيم — ألوان واضحة في الفاتح/الداكن */}
+      {totalPages > 1 && (
+        <nav
+          className="mt-10 flex items-center justify-center gap-2"
+          role="navigation"
+          aria-label="Pagination"
+        >
+          {/* First / Prev */}
+          <button
+            onClick={() => changePage(1)}
+            disabled={page === 1 || loading}
+            className="inline-flex items-center rounded-full px-3 py-1.5 text-sm
+                       border text-zinc-800 border-zinc-300 bg-white hover:bg-zinc-100
+                       focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2
+                       dark:text-zinc-200 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:bg-zinc-800 dark:focus-visible:ring-offset-zinc-900
+                       disabled:opacity-40 disabled:pointer-events-none"
+            aria-label={t.first}
+          >
+            « {t.first}
+          </button>
+          <button
+            onClick={() => changePage(page - 1)}
+            disabled={page === 1 || loading}
+            className="inline-flex items-center rounded-full px-3 py-1.5 text-sm
+                       border text-zinc-800 border-zinc-300 bg-white hover:bg-zinc-100
+                       focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2
+                       dark:text-zinc-200 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:bg-zinc-800 dark:focus-visible:ring-offset-zinc-900
+                       disabled:opacity-40 disabled:pointer-events-none"
+            aria-label={t.prev}
+          >
+            ‹ {t.prev}
+          </button>
+
+          {/* أرقام الصفحات مع نقاط … */}
+          {buildPageWindow(page, totalPages, 2).map((p, idx) =>
+            p === '…' ? (
+              <span
+                key={`dots-${idx}`}
+                className="px-2 text-zinc-500 select-none"
+                aria-hidden
+              >
+                …
+              </span>
+            ) : (
+              <button
+                key={p}
+                onClick={() => changePage(p)}
+                aria-current={p === page ? 'page' : undefined}
+                aria-label={`${t.page} ${p}`}
+                className={[
+                  'inline-flex items-center justify-center rounded-full px-4 py-2 text-sm transition',
+                  p === page
+                    ? // زر نشط — تدرّج واضح + ظل
+                      'text-white bg-gradient-to-r from-sky-600 via-indigo-600 to-fuchsia-600 shadow-lg shadow-indigo-500/25 ' +
+                      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 ' +
+                      'dark:focus-visible:ring-offset-zinc-900'
+                    : // أزرار خاملة — تباين أعلى
+                      'border text-zinc-800 border-zinc-300 bg-white hover:bg-zinc-100 ' +
+                      'dark:text-zinc-200 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:bg-zinc-800 ' +
+                      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 ' +
+                      'dark:focus-visible:ring-offset-zinc-900',
+                ].join(' ')}
+              >
+                {p}
+              </button>
+            )
+          )}
+
+          {/* Next / Last */}
+          <button
+            onClick={() => changePage(page + 1)}
+            disabled={page === totalPages || loading}
+            className="inline-flex items-center rounded-full px-3 py-1.5 text-sm
+                       border text-zinc-800 border-zinc-300 bg-white hover:bg-zinc-100
+                       focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2
+                       dark:text-zinc-200 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:bg-zinc-800 dark:focus-visible:ring-offset-zinc-900
+                       disabled:opacity-40 disabled:pointer-events-none"
+            aria-label={t.next}
+          >
+            {t.next} ›
+          </button>
+          <button
+            onClick={() => changePage(totalPages)}
+            disabled={page === totalPages || loading}
+            className="inline-flex items-center rounded-full px-3 py-1.5 text-sm
+                       border text-zinc-800 border-zinc-300 bg-white hover:bg-zinc-100
+                       focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2
+                       dark:text-zinc-200 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:bg-zinc-800 dark:focus-visible:ring-offset-zinc-900
+                       disabled:opacity-40 disabled:pointer-events-none"
+            aria-label={t.last}
+          >
+            {t.last} »
+          </button>
+        </nav>
+      )}
     </>
   );
 }

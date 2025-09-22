@@ -155,16 +155,38 @@ export default function ContactForm({ locale, t }: Props) {
       </label>
 
       <div className="flex items-center gap-3">
+        {/* زر الإرسال – نفس ستايل زر Contact */}
         <button
           type="submit"
           disabled={loading}
-          className="inline-flex items-center justify-center px-4 py-2 rounded-md text-white bg-sky-600 hover:bg-sky-700 disabled:opacity-60 transition"
+          className="group inline-flex items-center gap-2 rounded-full px-5 py-2.5
+                     text-sm font-semibold text-white
+                     bg-gradient-to-r from-sky-600 via-indigo-600 to-fuchsia-600
+                     shadow-sm hover:shadow-lg transition-all duration-200
+                     hover:brightness-110 active:brightness-95
+                     focus-visible:outline-none focus-visible:ring-2
+                     focus-visible:ring-offset-2 focus-visible:ring-indigo-500
+                     dark:focus-visible:ring-offset-zinc-900
+                     disabled:opacity-60 disabled:cursor-not-allowed"
         >
-          {loading ? '…' : t.button}
+          <span>
+            {loading
+              ? (locale === 'pl' ? 'Wysyłanie…' : 'Sending…')
+              : t.button}
+          </span>
+          {/* سهم يتحرك يمينًا عند التحويم */}
+          <svg
+            viewBox="0 0 20 20"
+            fill="currentColor"
+            aria-hidden="true"
+            className={`size-4 transition-transform duration-200 ${loading ? '' : 'group-hover:translate-x-0.5'}`}
+          >
+            <path d="M7.5 4.5a1 1 0 0 1 1.7-.7l5 5a1 1 0 0 1 0 1.4l-5 5a1 1 0 1 1-1.4-1.4L10.6 11H3a1 1 0 1 1 0-2h7.6L7.8 6.2a1 1 0 0 1-.3-.7Z" />
+          </svg>
         </button>
 
         {ok && <span className="text-sm text-emerald-600">{ok}</span>}
-        {err && <span className="text-sm text-red-600">{err}</span>}
+        {err && <span className="text-sm text-rose-600">{err}</span>}
       </div>
     </form>
   );
