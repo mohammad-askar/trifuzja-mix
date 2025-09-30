@@ -3,22 +3,39 @@ import type { Metadata } from 'next';
 
 export const dynamic = 'force-static';
 
-type Locale = 'en' | 'pl';
-const LOCALES: Locale[] = ['en', 'pl'];
+// ثوابت اللغة + نوع مضبوط
+const LOCALES = ['en', 'pl'] as const;
+type Locale = typeof LOCALES[number];
+
+function isLocale(x: unknown): x is Locale {
+  return typeof x === 'string' && (LOCALES as readonly string[]).includes(x);
+}
 
 // اسم الموقع كمصدر وحيد للحقيقة
 const SITE_NAME = 'Initiativa Autonoma';
 
-// بيانات المزوّد (نستخدمها في قسم "Contact" بالسياسة)
+// بيانات المزوّد (حدّث البريد لاحقًا)
 const PROVIDER = {
   legalName: 'Patrycja Konkowska',
   brandName: SITE_NAME,
   street: 'ul. Darzyborska 15B/7',
   cityZip: '61-303 Poznań',
-  email: 'contact@example.com', // ← حدّثه ببريدك الرسمي عند توفره
+  email: 'contact@example.com', // ← بدّلها ببريدك الرسمي
 } as const;
 
-const i18n = {
+const i18n: Record<Locale, {
+  title: string;
+  updatedLabel: string;
+  introH: string;
+  intro: string;
+  dataH: string;
+  data: string[];
+  rightsH: string;
+  rights: string;
+  contactH: string;
+  country: string;
+  providerLineLabel: string;
+}> = {
   en: {
     title: 'Privacy Policy',
     updatedLabel: 'Last updated:',
@@ -55,16 +72,17 @@ const i18n = {
     country: 'Polska',
     providerLineLabel: 'Usługodawca',
   },
-} as const;
+};
 
 export async function generateMetadata({
   params,
 }: {
-  params: Promise<{ locale: Locale }>;
+  params: Promise<{ locale: string }>;
 }): Promise<Metadata> {
-  const { locale } = await params;
-  const loc: Locale = LOCALES.includes(locale) ? locale : 'en';
+  const { locale } = await params; // ✅ Next 15 requires await
+  const loc: Locale = isLocale(locale) ? locale : 'en';
   const t = i18n[loc];
+
   return {
     title: `${t.title} | ${SITE_NAME}`,
     description:
@@ -78,10 +96,10 @@ export async function generateMetadata({
 export default async function PrivacyPage({
   params,
 }: {
-  params: Promise<{ locale: Locale }>;
+  params: Promise<{ locale: string }>;
 }) {
-  const { locale } = await params;
-  const loc: Locale = LOCALES.includes(locale) ? locale : 'en';
+  const { locale } = await params; // ✅ Next 15 requires await
+  const loc: Locale = isLocale(locale) ? locale : 'en';
   const t = i18n[loc];
 
   const updatedISO = '2025-09-14';
@@ -120,8 +138,7 @@ export default async function PrivacyPage({
           <p>
             <strong>{t.providerLineLabel}:</strong> {PROVIDER.legalName} &mdash; {PROVIDER.brandName}
             <br />
-            {PROVIDER.street}, {PROVIDER.cityZip}, {t.country}.{' '}
-            <strong>Email:</strong> {PROVIDER.email}
+            {PROVIDER.street}, {PROVIDER.cityZip}, {t.country}. <strong>Email:</strong> {PROVIDER.email}
           </p>
         </div>
       </article>

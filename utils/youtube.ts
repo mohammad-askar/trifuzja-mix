@@ -1,10 +1,9 @@
-// E:\trifuzja-mix\utils\youtube.ts
+// utils/youtube.ts
+/** يستخرج معرّف يوتيوب من أشكال الروابط الشائعة */
 export function getYouTubeId(input: string): string | null {
   try {
     const u = new URL(input.trim());
-
-    // normalize host (mobile, www, etc.)
-    const host = u.host.replace(/^m\./, '');
+    const host = u.host.replace(/^m\./, ''); // ط normalize
 
     // youtu.be/<id>
     if (host === 'youtu.be') {
@@ -25,21 +24,32 @@ export function getYouTubeId(input: string): string | null {
       // /embed/<id>
       if (seg[0] === 'embed' && seg[1]) return seg[1];
 
-      // sometimes share links look like /live/<id>, handle if you want:
+      // /live/<id>
       if (seg[0] === 'live' && seg[1]) return seg[1];
     }
   } catch {
-    /* ignore */
+    /* ignore malformed url */
   }
   return null;
 }
 
+/** URL أيمبد صالح من أي رابط يوتيوب */
 export function toYouTubeEmbed(url: string): string {
   const id = getYouTubeId(url);
   return id ? `https://www.youtube.com/embed/${id}` : url;
 }
 
-export function getYouTubeThumb(url: string): string | null {
+/** مرشّح صور مصغّرة موثوق: i.ytimg.com + سلسلة بدائل */
+export function getYouTubeThumbCandidates(url: string): string[] {
   const id = getYouTubeId(url);
-  return id ? `https://img.youtube.com/vi/${id}/hqdefault.jpg` : null;
+  if (!id) return [];
+  const base = `https://i.ytimg.com/vi/${id}`;
+  // الترتيب حسب الجودة المتاحة غالبًا
+  return [`${base}/maxresdefault.jpg`, `${base}/hqdefault.jpg`, `${base}/mqdefault.jpg`];
+}
+
+/** الصورة الأولى المقترحة (يمكن 404 لبعض الفيديوهات، لذا الأفضل استخدام السلسلة مع onError) */
+export function getYouTubeThumb(url: string): string | null {
+  const list = getYouTubeThumbCandidates(url);
+  return list[0] ?? null;
 }

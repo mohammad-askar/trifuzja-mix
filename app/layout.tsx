@@ -6,7 +6,8 @@ import type { Metadata } from 'next';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/authOptions';
 import Providers from './providers';
-import GoogleAnalytics from './GoogleAnalytics'; // احذف هذا السطر لو لم تُنشئ الملف
+import GoogleAnalytics from './GoogleAnalytics';        // يتفعّل فقط بعد الموافقة (داخل المكوّن)
+import CookieBanner from './components/CookieBanner';   // شريط الموافقة
 
 const geistSans = Geist({ variable: '--font-geist-sans', subsets: ['latin'] });
 const geistMono = Geist_Mono({ variable: '--font-geist-mono', subsets: ['latin'] });
@@ -39,9 +40,11 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        {/* Google Analytics (اختياري) */}
+        {/* GA لن يُحمّل إلا بعد الموافقة داخل المكوّن */}
         <GoogleAnalytics />
         <Providers session={session}>{children}</Providers>
+        {/* شريط الموافقة في أسفل الصفحة */}
+        <CookieBanner />
       </body>
     </html>
   );

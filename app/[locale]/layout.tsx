@@ -7,17 +7,17 @@ type Locale = 'en' | 'pl';
 
 interface LocaleLayoutProps {
   children: ReactNode;
-  params: { locale: string };
+  // ملاحظة: في Next 15 params أصبحت Promise
+  params: Promise<{ locale: string }>;
 }
 
-export default function LocaleLayout({ children, params }: LocaleLayoutProps) {
-  const raw = typeof params?.locale === 'string' ? params.locale : 'en';
+export default async function LocaleLayout({ children, params }: LocaleLayoutProps) {
+  const { locale: raw } = await params;           // ✅ ننتظر params
   const locale: Locale = raw === 'pl' ? 'pl' : 'en';
 
   return (
     <>
       <Header locale={locale} />
-      {/* Spacer لمنع تداخل الهيدر الثابت */}
       <div className="h-1" aria-hidden />
       <main className="min-h-screen">{children}</main>
       <Footer locale={locale} />
