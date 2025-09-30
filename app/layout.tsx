@@ -1,4 +1,4 @@
-// app/[locale]/layout.tsx
+// app/layout.tsx
 import './globals.css';
 import { Geist, Geist_Mono } from 'next/font/google';
 import type { ReactNode } from 'react';
@@ -6,62 +6,42 @@ import type { Metadata } from 'next';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/authOptions';
 import Providers from './providers';
+import GoogleAnalytics from './GoogleAnalytics'; // احذف هذا السطر لو لم تُنشئ الملف
 
 const geistSans = Geist({ variable: '--font-geist-sans', subsets: ['latin'] });
 const geistMono = Geist_Mono({ variable: '--font-geist-mono', subsets: ['latin'] });
 
-type Locale = 'en' | 'pl';
-
-export async function generateMetadata({
-  params,
-}: {
-  params: Promise<{ locale: Locale }>;
-}): Promise<Metadata> {
-  const { locale } = await params;
-  const isPL = locale === 'pl';
-
-  return {
-    title: isPL ? 'Initiativa Autonoma' : 'Initiativa Autonoma',
-    description: isPL
-      ? 'Czytaj artykuły po polsku (i archiwalne po angielsku).'
-      : 'Read articles in Polish (and legacy English).',
-    // لغات بديلة (يساعد محركات البحث)
-    alternates: {
-      languages: {
-        en: '/en',
-        pl: '/pl',
-      },
+export const metadata: Metadata = {
+  title: 'Initiativa Autonoma',
+  description: 'Read articles in Polish (and legacy English).',
+  alternates: {
+    languages: {
+      en: '/en',
+      pl: '/pl',
     },
-    icons: {
-      icon: [
-        { url: '/favicon.ico', sizes: 'any' },
-        { url: '/favicon-32x32.png', type: 'image/png', sizes: '32x32' },
-        { url: '/favicon-16x16.png', type: 'image/png', sizes: '16x16' },
-        { url: '/icon-192.png', sizes: '192x192', type: 'image/png' },
-        { url: '/icon-512.png', sizes: '512x512', type: 'image/png' }, // ✅ صحيح
-      ],
-      apple: [{ url: '/apple-touch-icon.png', sizes: '180x180' }],
-    },
-    manifest: '/site.webmanifest',
-  };
-}
+  },
+  icons: {
+    icon: [
+      { url: '/favicon.ico', sizes: 'any' },
+      { url: '/favicon-32x32.png', type: 'image/png', sizes: '32x32' },
+      { url: '/favicon-16x16.png', type: 'image/png', sizes: '16x16' },
+      { url: '/icon-192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/icon-512.png', sizes: '512x512', type: 'image/png' },
+    ],
+    apple: [{ url: '/apple-touch-icon.png', sizes: '180x180' }],
+  },
+  manifest: '/site.webmanifest',
+};
 
-export default async function LocaleLayout({
-  children,
-  params,
-}: {
-  children: ReactNode;
-  params: Promise<{ locale: Locale }>;
-}) {
-  const { locale } = await params;
+export default async function RootLayout({ children }: { children: ReactNode }) {
   const session = await getServerSession(authOptions);
 
   return (
-    <html lang={locale} suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        <Providers session={session}>
-          {children}
-        </Providers>
+        {/* Google Analytics (اختياري) */}
+        <GoogleAnalytics />
+        <Providers session={session}>{children}</Providers>
       </body>
     </html>
   );
