@@ -8,7 +8,7 @@ import { authOptions } from '@/lib/authOptions';
 import Providers from './providers';
 import GoogleAnalytics from './GoogleAnalytics';
 import CookieBanner from './components/CookieBanner';
-import Script from 'next/script'; // ✅ جديد
+import Script from 'next/script';
 
 const geistSans = Geist({ variable: '--font-geist-sans', subsets: ['latin'] });
 const geistMono = Geist_Mono({ variable: '--font-geist-mono', subsets: ['latin'] });
@@ -38,18 +38,17 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        {/* ✅ سكربت التحقق من AdSense (مطلوب في <head> على كل الصفحات) */}
+        {/* ✅ سكربت التحقق من AdSense داخل <head> وبأولوية قبل التفاعل */}
         <Script
           id="adsense-verify"
-          async
-          strategy="afterInteractive"
           src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1571082631966764"
           crossOrigin="anonymous"
+          strategy="beforeInteractive"
         />
       </head>
 
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        {/* GA لن يُحمّل إلا بعد الموافقة داخل المكوّن */}
+        {/* GA لن يُحمَّل إلا بعد الموافقة داخل المكوّن */}
         <GoogleAnalytics />
         <Providers session={session}>{children}</Providers>
         <CookieBanner />
