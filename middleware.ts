@@ -1,16 +1,30 @@
-// middleware.ts
+// E:\trifuzja-mix\middleware.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { getToken } from 'next-auth/jwt';
+import { getToken, type JWT } from 'next-auth/jwt';
+
+// JWT الخاص بك مع حقل role
+type AppJWT = JWT & {
+  role?: 'admin' | 'editor' | 'user';
+};
+
+// type guard لتضييق النوع إلى AppJWT بدون casts
+function isAppJWT(token: JWT | null): token is AppJWT {
+  return !!token && (typeof (token as Record<string, unknown>).role === 'string' || !('role' in (token as object)));
+}
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // ✅ استثناء robots.txt و sitemap.xml من أي إعادة توجيه للغات
-  if (pathname === '/robots.txt' || pathname === '/sitemap.xml') {
+  // اسمح بملفات السيو من الجذر
+  if (
+    pathname === '/robots.txt' ||
+    pathname === '/sitemap.xml' ||
+    pathname.startsWith('/sitemap') // يشمل /sitemap-0.xml
+  ) {
     return NextResponse.next();
   }
 
-  // 🟡 إعادة التوجيه إلى اللغة الافتراضية إن لم يتم تحديدها
+  // إعادة التوجيه إلى اللغة الافتراضية إذا لم تكن محددة
   if (
     !pathname.startsWith('/en') &&
     !pathname.startsWith('/pl') &&
@@ -21,27 +35,22 @@ export async function middleware(req: NextRequest) {
     !pathname.startsWith('/flags') &&
     !pathname.startsWith('/images')
   ) {
-    const locale = 'en';
-    return NextResponse.redirect(new URL(`/${locale}${pathname}`, req.url));
+    return NextResponse.redirect(new URL(`/en${pathname}`, req.url));
   }
 
-  // 🛡️ حماية لوحات التحكم /admin
+  // حماية /admin
   if (pathname.startsWith('/admin')) {
-    const token = await getToken({
-      req,
-      secret: process.env.NEXTAUTH_SECRET,
-    });
+    const raw = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
+    const token: AppJWT | null = isAppJWT(raw) ? raw : null;
 
-    if (!token || token.role !== 'admin') {
-      const loginUrl = new URL('/login', req.url);
-      return NextResponse.redirect(loginUrl);
+    if (token?.role !== 'admin') {
+      return NextResponse.redirect(new URL('/login', req.url));
     }
   }
 
   return NextResponse.next();
 }
 
-// 👇 فعّل الميدل وير على كل الروابط
 export const config = {
   matcher: ['/((?!api|_next|favicon.ico).*)'],
 };

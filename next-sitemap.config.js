@@ -1,4 +1,4 @@
-// next-sitemap.config.js
+// E:\trifuzja-mix\next-sitemap.config.js
 const siteUrl = process.env.SITE_URL ?? 'https://initiativa-autonoma.com';
 
 const sitemapConfig = {
