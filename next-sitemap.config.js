@@ -1,12 +1,9 @@
 // next-sitemap.config.js
-// import 'dotenv/config' // ← فعّلها إذا احتجت متغيرات .env هنا
+const siteUrl = process.env.SITE_URL ?? 'https://initiativa-autonoma.com';
 
-const siteUrl = process.env.SITE_URL ?? 'https://your-domain.com'; // ← غيّره إلىドومينك
-
-/** @type {import('next-sitemap').IConfig} */
 const sitemapConfig = {
   siteUrl,
-  generateRobotsTxt: true,
+  generateRobotsTxt: false, // ← لا تولّد robots.txt لأن عندك app/robots.ts
   changefreq: 'weekly',
   priority: 0.7,
   sitemapSize: 7000,
