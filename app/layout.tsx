@@ -6,8 +6,9 @@ import type { Metadata } from 'next';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/authOptions';
 import Providers from './providers';
-import GoogleAnalytics from './GoogleAnalytics';        // يتفعّل فقط بعد الموافقة (داخل المكوّن)
-import CookieBanner from './components/CookieBanner';   // شريط الموافقة
+import GoogleAnalytics from './GoogleAnalytics';
+import CookieBanner from './components/CookieBanner';
+import Script from 'next/script'; // ✅ جديد
 
 const geistSans = Geist({ variable: '--font-geist-sans', subsets: ['latin'] });
 const geistMono = Geist_Mono({ variable: '--font-geist-mono', subsets: ['latin'] });
@@ -16,10 +17,7 @@ export const metadata: Metadata = {
   title: 'Initiativa Autonoma',
   description: 'Read articles in Polish (and legacy English).',
   alternates: {
-    languages: {
-      en: '/en',
-      pl: '/pl',
-    },
+    languages: { en: '/en', pl: '/pl' },
   },
   icons: {
     icon: [
@@ -39,11 +37,21 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
 
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        {/* ✅ سكربت التحقق من AdSense (مطلوب في <head> على كل الصفحات) */}
+        <Script
+          id="adsense-verify"
+          async
+          strategy="afterInteractive"
+          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1571082631966764"
+          crossOrigin="anonymous"
+        />
+      </head>
+
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         {/* GA لن يُحمّل إلا بعد الموافقة داخل المكوّن */}
         <GoogleAnalytics />
         <Providers session={session}>{children}</Providers>
-        {/* شريط الموافقة في أسفل الصفحة */}
         <CookieBanner />
       </body>
     </html>
