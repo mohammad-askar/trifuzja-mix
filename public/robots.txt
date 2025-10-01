@@ -1,9 +1,6 @@
-# *
+# robots.txt for initiativa-autonoma.com
+
 User-agent: *
 Allow: /
 
-# Host
-Host: https://your-domain.com
-
-# Sitemaps
-Sitemap: https://your-domain.com/sitemap.xml
+Sitemap: https://initiativa-autonoma.com/sitemap.xml
