@@ -15,9 +15,7 @@ const geistMono = Geist_Mono({ variable: '--font-geist-mono', subsets: ['latin']
 export const metadata: Metadata = {
   title: 'Initiativa Autonoma',
   description: 'Read articles in Polish (and legacy English).',
-  alternates: {
-    languages: { en: '/en', pl: '/pl' },
-  },
+  alternates: { languages: { en: '/en', pl: '/pl' } },
   icons: {
     icon: [
       { url: '/favicon.ico', sizes: 'any' },
@@ -37,7 +35,10 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        {/* 🔑 ضع الـ script كـ <script> عادي بحيث يظهر مباشرة في HTML الخام */}
+        {/* AdSense site verification (recommended/required by many accounts) */}
+        <meta name="google-adsense-account" content="ca-pub-1571082631966764" />
+
+        {/* AdSense loader – rendered in raw HTML, not deferred */}
         <script
           async
           src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1571082631966764"

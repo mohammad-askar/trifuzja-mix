@@ -1,51 +1,72 @@
 // middleware.ts
-import { NextRequest, NextResponse } from 'next/server'
-import { getToken, type JWT } from 'next-auth/jwt'
+import { NextRequest, NextResponse } from 'next/server';
+import { getToken, type JWT } from 'next-auth/jwt';
 
-type AppJWT = JWT & { role?: 'admin' | 'editor' | 'user' }
+type AppJWT = JWT & { role?: 'admin' | 'editor' | 'user' };
 
 function isAppJWT(token: JWT | null): token is AppJWT {
-  return !!token && (typeof (token as Record<string, unknown>).role === 'string' || !('role' in (token as object)))
+  return !!token && (typeof (token as Record<string, unknown>).role === 'string' || !('role' in (token as object)));
+}
+
+const SUPPORTED_LOCALES = new Set(['en', 'pl']);
+
+function extractTopSegment(pathname: string): string | null {
+  const m = pathname.match(/^\/([^/]+)/);
+  return m ? m[1] : null;
+}
+
+function isStaticOrSeoPath(pathname: string): boolean {
+  // allow SEO/static non-prefixed paths that don't have dots
+  if (pathname === '/' || pathname.startsWith('/sitemap')) return true;
+  if (pathname.startsWith('/.well-known')) return true;
+  if (pathname.startsWith('/images') || pathname.startsWith('/flags') || pathname.startsWith('/upload')) return true;
+  if (/^\/google[a-z0-9]+\.html$/i.test(pathname)) return true;
+  if (pathname.startsWith('/api')) return true;
+  if (pathname.startsWith('/_next')) return true;
+  return false;
+}
+
+function isAdminPath(pathname: string): boolean {
+  if (pathname === '/admin') return true;
+  return /^\/(en|pl)\/admin(\/|$)/.test(pathname);
 }
 
 export async function middleware(req: NextRequest) {
-  const { pathname } = req.nextUrl
+  const { pathname } = req.nextUrl;
 
-  // استثناءات SEO من أي توجيه
-  if (
-    pathname === '/robots.txt' ||
-    pathname === '/sitemap.xml' ||
-    pathname.startsWith('/sitemap') // يشمل /sitemap-0.xml … إلخ
-  ) {
-    return NextResponse.next()
+  // let static/seo paths pass
+  if (isStaticOrSeoPath(pathname)) {
+    return NextResponse.next();
   }
 
-  // إعادة توجيه للّغة الافتراضية
-  if (
-    !pathname.startsWith('/en') &&
-    !pathname.startsWith('/pl') &&
-    !pathname.startsWith('/_next') &&
-    !pathname.startsWith('/api') &&
-    pathname !== '/favicon.ico' &&
-    !pathname.startsWith('/upload') &&
-    !pathname.startsWith('/flags') &&
-    !pathname.startsWith('/images')
-  ) {
-    return NextResponse.redirect(new URL(`/en${pathname}`, req.url))
+  // locale redirect if not prefixed
+  const first = extractTopSegment(pathname);
+  const hasSupportedLocale = first !== null && SUPPORTED_LOCALES.has(first);
+  if (!hasSupportedLocale) {
+    const url = req.nextUrl.clone();
+    url.pathname = `/en${pathname}`;
+    return NextResponse.redirect(url, 308);
   }
 
-  // حماية /admin
-  if (pathname.startsWith('/admin')) {
-    const raw = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
-    const token: AppJWT | null = isAppJWT(raw) ? raw : null
+  // admin guard
+  if (isAdminPath(pathname)) {
+    const raw = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
+    const token: AppJWT | null = isAppJWT(raw) ? raw : null;
     if (token?.role !== 'admin') {
-      return NextResponse.redirect(new URL('/login', req.url))
+      const locale = extractTopSegment(pathname) ?? 'en';
+      const url = req.nextUrl.clone();
+      url.pathname = `/${locale}/login`;
+      return NextResponse.redirect(url, 307);
     }
   }
 
-  return NextResponse.next()
+  return NextResponse.next();
 }
 
+// IMPORTANT: exclude ANY path that contains a dot, so /ads.txt, /robots.txt, images, maps, etc never hit middleware.
 export const config = {
-  matcher: ['/((?!api|_next|favicon.ico).*)'],
-}
+  matcher: [
+    // run on everything EXCEPT: _next, api, and any path that includes a dot (".")
+    '/((?!_next|api|.*\\..*).*)',
+  ],
+};
