@@ -10,22 +10,20 @@ import VideoEmbed from '@/app/components/video/VideoEmbed';
 export const revalidate = 0;
 
 type Locale = 'en' | 'pl';
-type Status = 'draft' | 'published';
 type LegacyCover = 'top' | 'center' | 'bottom';
 type CoverPosition = { x: number; y: number };
 type MaybeI18n = string | Record<string, string> | undefined;
 
 interface ArticleDoc {
   slug: string;
-  categoryId: string;
+  categoryId?: string;
   title: MaybeI18n;
   excerpt?: MaybeI18n;
   content?: MaybeI18n;
   coverUrl?: string;
   videoUrl?: string;
-  status?: Status;
-  createdAt: Date;
-  updatedAt: Date;
+  createdAt?: Date;
+  updatedAt?: Date;
   readingTime?: string;
   meta?: {
     coverPosition?: CoverPosition | LegacyCover;
@@ -37,15 +35,13 @@ interface ArticleDoc {
 function pick(field: MaybeI18n, locale: Locale): string {
   if (!field) return '';
   if (typeof field === 'string') return field;
-  return field[locale] ?? field.en ?? Object.values(field)[0] ?? '';
+  return field[locale] ?? field.en ?? String(Object.values(field)[0] ?? '');
 }
-
 function resolveSrc(src?: string): string {
   if (!src) return '';
   if (/^https?:\/\//i.test(src)) return src;
   return src.startsWith('/') ? src : `/${src}`;
 }
-
 function absoluteUrl(pathOrUrl: string): string {
   const base = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/+$/, '') ?? '';
   if (!base) return pathOrUrl;
@@ -53,22 +49,16 @@ function absoluteUrl(pathOrUrl: string): string {
     ? pathOrUrl
     : `${base}${pathOrUrl.startsWith('/') ? '' : '/'}${pathOrUrl}`;
 }
-
 async function fetchArticle(slug: string) {
   const db = (await clientPromise).db();
-  return db
-    .collection<ArticleDoc>('articles')
-    .findOne({ slug, $or: [{ status: 'published' }, { status: { $exists: false } }] });
+  return db.collection<ArticleDoc>('articles').findOne({ slug });
 }
-
 function stripHtml(html: string): string {
   return html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
 }
-
 function normalizeImageWidths(html: string): string {
   return html;
 }
-
 function toCoverXY(pos?: CoverPosition | LegacyCover): CoverPosition {
   if (!pos) return { x: 50, y: 50 };
   if (typeof pos === 'string') {
@@ -78,8 +68,7 @@ function toCoverXY(pos?: CoverPosition | LegacyCover): CoverPosition {
   }
   return { x: Math.max(0, Math.min(100, pos.x)), y: Math.max(0, Math.min(100, pos.y)) };
 }
-
-/** Detect “pasted URL as slug” patterns (youtube, youtu.be, shorts, etc.) */
+/** Detect “pasted URL as slug” patterns */
 function looksLikeUrlSlug(s: string): boolean {
   return /^(https?:|www\.|https?-|www-)|youtube|youtu(?:-be)?|shorts/.test(s);
 }
@@ -90,7 +79,6 @@ export async function generateMetadata(
 ): Promise<Metadata> {
   const { slug, locale } = await params;
 
-  // Try the DB first. If no article, mark as noindex.
   const art = await fetchArticle(slug);
   if (!art) {
     return { title: 'Not Found', robots: { index: false, follow: false } };
@@ -128,7 +116,7 @@ export default async function ArticlePage(
 ) {
   const { locale, slug } = await params;
 
-  // 1) Try to load the article
+  // 1) Load the article
   const art = await fetchArticle(slug);
 
   // 2) If not found and slug looks like a pasted URL -> send to Videos
@@ -152,10 +140,14 @@ export default async function ArticlePage(
       })
     : '';
 
-  const dateStr = new Date(art.createdAt).toLocaleDateString(
+  const created = art.createdAt ? new Date(art.createdAt) : new Date();
+  const updated = art.updatedAt ? new Date(art.updatedAt) : created;
+
+  const dateStr = created.toLocaleDateString(
     locale === 'pl' ? 'pl-PL' : 'en-GB',
     { year: 'numeric', month: 'long', day: 'numeric' }
   );
+
   const pageUrl = encodeURIComponent(absoluteUrl(`/${locale}/articles/${slug}`));
   const coverPos = toCoverXY(art.meta?.coverPosition);
 
@@ -186,8 +178,8 @@ export default async function ArticlePage(
     '@type': 'Article',
     headline: title,
     image: coverAbs ? [coverAbs] : undefined,
-    datePublished: new Date(art.createdAt).toISOString(),
-    dateModified: new Date(art.updatedAt).toISOString(),
+    datePublished: created.toISOString(),
+    dateModified: updated.toISOString(),
     inLanguage: locale,
     articleBody: stripHtml(rawBody || ''),
   };

@@ -1,7 +1,7 @@
-// 📁 app/[locale]/page.tsx
+// E:\trifuzja-mix\app\[locale]\page.tsx
 import clientPromise from '@/types/mongodb';
 import type { Metadata } from 'next';
-import Link from 'next/link';
+// import Link from 'next/link';
 import type { ObjectId } from 'mongodb';
 import LatestArticlesSlider from '@/app/components/LatestArticlesSlider';
 import { getYouTubeThumb } from '@/utils/youtube';
@@ -12,8 +12,10 @@ interface HomeTexts {
   heroTitle: string;
   heroSubtitle: string;
   cta: string;
-  latest: string;
-  empty: string;
+  latestArticles: string;
+  latestVideos: string;
+  emptyArticles: string;
+  emptyVideos: string;
 }
 
 const TEXTS: Record<Locale, HomeTexts> = {
@@ -22,24 +24,25 @@ const TEXTS: Record<Locale, HomeTexts> = {
     heroSubtitle:
       'Independent publishing initiative outside the traditional editorial structure – creativity, quality, and openness.',
     cta: 'Start Reading',
-    latest: 'Latest Content',
-    empty: 'No articles yet.',
+    latestArticles: 'Latest Articles',
+    latestVideos: 'Latest Videos',
+    emptyArticles: 'No articles yet.',
+    emptyVideos: 'No videos yet.',
   },
   pl: {
     heroTitle: 'Initiativa Autonoma',
     heroSubtitle:
       'Niezależna inicjatywa publikacyjna poza klasyczną strukturą redakcyjną -  kreatywność, jakość i otwartość.',
     cta: 'Czytaj teraz',
-    latest: 'Najnowsze Materiały',
-    empty: 'Brak artykułów.',
+    latestArticles: 'Najnowsze artykuły',
+    latestVideos: 'Najnowsze wideo',
+    emptyArticles: 'Brak artykułów.',
+    emptyVideos: 'Brak wideo.',
   },
 };
 
-// دعم موضع القص (اختياري)
 type LegacyCoverPos = 'top' | 'center' | 'bottom';
 type CoverPosition = { x: number; y: number };
-
-// string أو record (قديم)
 type MaybeI18n = string | Record<string, string> | undefined;
 
 interface RawArticle {
@@ -49,11 +52,16 @@ interface RawArticle {
   excerpt?: MaybeI18n;
   coverUrl?: string;
   videoUrl?: string;
-  status?: 'draft' | 'published';
   createdAt?: Date;
   meta?: { coverPosition?: LegacyCoverPos | CoverPosition };
   isVideoOnly?: boolean;
 }
+
+/** <-- NEW: type that matches what we actually project/return from Mongo */
+type RawArticleProjected = Pick<
+  RawArticle,
+  '_id' | 'slug' | 'title' | 'excerpt' | 'coverUrl' | 'videoUrl' | 'createdAt' | 'meta' | 'isVideoOnly'
+>;
 
 interface ArticleCard {
   _id: string;
@@ -73,24 +81,23 @@ function pick(field: MaybeI18n, locale: Locale): string {
   return field[locale] ?? field.en ?? String(Object.values(field)[0] ?? '');
 }
 
-/* ------------ Metadata (async + await params) ------------ */
+/* ------------ Metadata (await params) ------------ */
 export async function generateMetadata(
   { params }: { params: Promise<{ locale: Locale }> }
 ): Promise<Metadata> {
   const { locale } = await params;
   const loc: Locale = locale === 'pl' ? 'pl' : 'en';
   return {
-    title: loc === 'pl'
-      ? 'Strona główna | Initiativa Autonoma'
-      : 'Home | Initiativa Autonoma',
-    description: loc === 'pl'
-      ? 'Najnowsze artykuły po polsku i angielsku.'
-      : 'Latest articles in English and Polish.',
+    title: loc === 'pl' ? 'Strona główna | Initiativa Autonoma' : 'Home | Initiativa Autonoma',
+    description:
+      loc === 'pl'
+        ? 'Najnowsze artykuły po polsku i angielsku.'
+        : 'Latest articles in English and Polish.',
     alternates: { languages: { en: '/en', pl: '/pl' } },
   };
 }
 
-/* ------------------------- Page (async + await params) ------------------------- */
+/* ------------------------- Page (await params) ------------------------- */
 export default async function LocaleHome(
   { params }: { params: Promise<{ locale: Locale }> }
 ) {
@@ -100,12 +107,14 @@ export default async function LocaleHome(
 
   const db = (await clientPromise).db();
 
-  const docs = await db
+  // Fetch separately to avoid starving one slider.
+  const articlesDocs = await db
     .collection<RawArticle>('articles')
-    .find({ $or: [{ status: 'published' }, { status: { $exists: false } }] })
+    .find({ $or: [{ isVideoOnly: { $exists: false } }, { isVideoOnly: { $ne: true } }] })
     .sort({ createdAt: -1 })
-    .limit(8)
-    .project({
+    .limit(12)
+    .project<RawArticleProjected>({  // <-- tell TS the RESULTING doc shape
+      _id: 1,
       slug: 1,
       title: 1,
       excerpt: 1,
@@ -117,25 +126,48 @@ export default async function LocaleHome(
     })
     .toArray();
 
-  const articles: ArticleCard[] = docs.map((d) => {
+  const videosDocs = await db
+    .collection<RawArticle>('articles')
+    .find({ isVideoOnly: true })
+    .sort({ createdAt: -1 })
+    .limit(12)
+    .project<RawArticleProjected>({
+      _id: 1,
+      slug: 1,
+      title: 1,
+      excerpt: 1,
+      coverUrl: 1,
+      videoUrl: 1,
+      createdAt: 1,
+      meta: 1,
+      isVideoOnly: 1,
+    })
+    .toArray();
+
+  /** <-- UPDATED: accept Projected type instead of RawArticle */
+  const toCard = (d: RawArticleProjected): ArticleCard => {
     const ytThumb = d.isVideoOnly && d.videoUrl ? getYouTubeThumb(d.videoUrl) : null;
     return {
       _id: d._id.toString(),
       slug: d.slug,
       title: pick(d.title, loc),
       excerpt: pick(d.excerpt, loc),
-      coverUrl: ytThumb ?? d.coverUrl, // thumb لو فيديو فقط
+      // Only swap to YouTube thumb for video-only posts.
+      coverUrl: ytThumb ?? d.coverUrl,
       videoUrl: d.videoUrl,
       createdAt: d.createdAt ? d.createdAt.toISOString() : undefined,
       meta: d.meta ? { coverPosition: d.meta.coverPosition } : undefined,
       isVideoOnly: d.isVideoOnly === true,
     };
-  });
+  };
+
+  const articlesOnly = articlesDocs.map(toCard);
+  const videosOnly = videosDocs.map(toCard);
 
   return (
     <main className="min-h-screen bg-gray-900 text-white">
       {/* Hero */}
-      <section className="relative text-center mt-15 py-27.5 px-4 bg-gradient-to-br from-gray-900 via-zinc-800 to-gray-900 overflow-hidden">
+      <section className="relative text-center mt-15 py-32 px-4 bg-gradient-to-br from-gray-900 via-zinc-800 to-gray-900 overflow-hidden">
         <div
           className="absolute inset-0 bg-[url('/images/hero-bg.jpg')] bg-cover bg-center opacity-10"
           aria-hidden="true"
@@ -147,24 +179,23 @@ export default async function LocaleHome(
           <p className="text-lg md:text-xl text-gray-300 mb-8">
             {t.heroSubtitle}
           </p>
-          <Link
-            href={`/${loc}/articles`}
-            className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-full font-semibold shadow-lg transition focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-          >
-            <span>{t.cta}</span>
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-            </svg>
-          </Link>
         </div>
       </section>
 
-      {/* Slider */}
+      {/* Articles slider */}
       <LatestArticlesSlider
         locale={loc}
-        articles={articles}
-        heading={t.latest}
-        emptyText={t.empty}
+        articles={articlesOnly}
+        heading={t.latestArticles}
+        emptyText={t.emptyArticles}
+      />
+
+      {/* Videos slider */}
+      <LatestArticlesSlider
+        locale={loc}
+        articles={videosOnly}
+        heading={t.latestVideos}
+        emptyText={t.emptyVideos}
       />
     </main>
   );

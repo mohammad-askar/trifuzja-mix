@@ -1,44 +1,54 @@
 // E:\trifuzja-mix\app\[locale]\admin\articles\[slug]\edit\metadata.ts
 import type { Metadata } from 'next';
 import clientPromise from '@/types/mongodb';
-import type { PageKey } from '@/types/core/article';
+
+type Locale = 'en' | 'pl';
 
 interface Params {
-  locale: 'en' | 'pl';
+  locale: Locale;
   slug: string;
 }
 
 type MetaDoc = {
   slug: string;
   title?: Record<string, string>;
-  page?: PageKey;
-  status?: string;
 };
+
+/** Pick localized title safely. */
+function pickTitle(title: MetaDoc['title'], loc: Locale, fallback: string): string {
+  if (!title) return fallback;
+  return (
+    (typeof title[loc] === 'string' && title[loc]) ||
+    (typeof title.en === 'string' && title.en) ||
+    (Object.values(title).find((v) => typeof v === 'string' && v.trim()) as string | undefined) ||
+    fallback
+  );
+}
 
 export async function generateMetadata(
   { params }: { params: Params },
 ): Promise<Metadata> {
   const { slug, locale } = params;
-  const loc: 'en' | 'pl' = locale === 'pl' ? 'pl' : 'en';
+  const loc: Locale = locale === 'pl' ? 'pl' : 'en';
 
   try {
     const db = (await clientPromise).db();
     const coll = db.collection<MetaDoc>('articles');
 
-    // fetch exactly what we need
+    // Fetch only what we need
     const doc = await coll.findOne(
       { slug },
-      { projection: { slug: 1, title: 1, page: 1, status: 1 } },
+      { projection: { slug: 1, title: 1 } },
     );
 
-    const pickedTitle =
-      (doc?.title && (doc.title[loc] || doc.title.en || Object.values(doc.title)[0])) ||
-      slug;
+    const pickedTitle = pickTitle(doc?.title, loc, slug);
 
     const baseTitle =
       loc === 'pl'
         ? `Edycja: ${pickedTitle} | Panel | Initiativa Autonoma`
         : `Edit: ${pickedTitle} | Admin | Initiativa Autonoma`;
+
+    const canonical = `/${loc}/admin/articles/${slug}/edit`;
 
     return {
       title: baseTitle,
@@ -46,20 +56,15 @@ export async function generateMetadata(
         loc === 'pl'
           ? 'Panel edycji artykułu w Initiativa Autonoma.'
           : 'Article editing panel in Initiativa Autonoma.',
-      robots: {
-        index: false,
-        follow: false,
-      },
-      alternates: {
-        canonical: `/${loc}/admin/articles/${slug}/edit`,
-      },
+      robots: { index: false, follow: false },
+      alternates: { canonical },
       openGraph: {
         title: baseTitle,
         description:
           loc === 'pl'
             ? 'Edycja artykułu (panel administratorski).'
             : 'Article edit (admin panel).',
-        url: `/${loc}/admin/articles/${slug}/edit`,
+        url: canonical,
         siteName: 'Initiativa Autonoma',
         type: 'website',
       },

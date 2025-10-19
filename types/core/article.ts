@@ -32,16 +32,11 @@ export interface CategoryRef {
 /* ----------------------------------------------------
  * 2) Constants & Unions
  * -------------------------------------------------- */
-export type ArticleStatus =
-  | 'draft'
-  | 'review'
-  | 'scheduled'
-  | 'published'
-  | 'archived';
 
-export type Locale = 'en'  | 'pl';
+/** لم يعد لدينا إلا حالة نشر واحدة */
+export type ArticleStatus = 'published';
 
-export type PageKey = 'multi' | 'terra' | 'daily';
+export type Locale = 'en' | 'pl';
 
 /* ----------------------------------------------------
  * 3) Core Document Types
@@ -53,28 +48,39 @@ export interface ArticleDoc {
   coverUrl?: string;
   videoUrl?: string;
   description?: string;
+  /** HTML النهائي للعرض */
   contentHtml: string;
+  /** محتوى خام متعدد اللغات (اختياري للتوافق/التحرير) */
   contentRaw?: unknown;
   locale: Locale;
-  pageKey: PageKey;
-  status: ArticleStatus;
+
+  /** ثابت الآن: كل المقالات منشورة */
+  status: 'published';
+
   authorId: string;
   authorName?: string;
   categories?: CategoryRef[];
   tags?: string[];
   heroImageUrl?: string;
   thumbnailUrl?: string;
+
+  /** تاريخ النشر (ISO string) */
   publishedAt?: string;
-  scheduledFor?: string;
+
+  /** إنشاء/تعديل */
   createdAt: string;
   updatedAt: string;
+
+  /** رقم المراجعة (إن استُخدم) */
   revision: number;
+
   meta?: {
     title?: string;
     description?: string;
     ogImage?: string;
     [key: string]: unknown;
   };
+
   metrics?: {
     views?: number;
     likes?: number;
@@ -90,15 +96,15 @@ export interface ArticleCreateInput {
   slug: string;
   title: string;
   description?: string;
+  /** الخام القادم من المحرر (غالباً {en,pl}) */
   contentRaw: unknown;
   locale: Locale;
-  pageKey: PageKey;
-  status?: ArticleStatus;
   categories?: string[];
   tags?: string[];
   heroImageUrl?: string;
   thumbnailUrl?: string;
-  scheduledFor?: string;
+  /** يمكن أن تُملأ عند الإنشاء لإظهار تاريخ النشر */
+  publishedAt?: string;
   meta?: {
     title?: string;
     description?: string;
@@ -113,13 +119,12 @@ export interface ArticleUpdateInput {
   description?: string;
   contentRaw?: unknown;
   locale?: Locale;
-  pageKey?: PageKey;
-  status?: ArticleStatus;
   categories?: string[];
   tags?: string[];
   heroImageUrl?: string;
   thumbnailUrl?: string;
-  scheduledFor?: string | null;
+  /** تعيين/تحديث تاريخ النشر عند الحاجة */
+  publishedAt?: string | null;
   meta?: {
     title?: string | null;
     description?: string | null;
@@ -128,15 +133,15 @@ export interface ArticleUpdateInput {
   };
 }
 
+/** استعلامات لوحة الإدارة/القائمة */
 export interface ArticleQueryParams {
   search?: string;
-  status?: ArticleStatus;
-  pageKey?: PageKey;
   locale?: Locale;
   categoryId?: string;
   tag?: string;
   page?: number;
   limit?: number;
+  /** مثال: "-createdAt", "title" … */
   sort?: string;
 }
 
@@ -148,8 +153,7 @@ export interface ArticleSummary {
   title: string;
   description?: string;
   locale: Locale;
-  pageKey: PageKey;
-  status: ArticleStatus;
+  status: 'published';
   publishedAt?: string;
   heroImageUrl?: string;
   tags?: string[];
@@ -169,7 +173,6 @@ export interface ArticlePublic {
   description?: string;
   contentHtml: string;
   locale: Locale;
-  pageKey: PageKey;
   publishedAt?: string;
   heroImageUrl?: string;
   thumbnailUrl?: string;
@@ -194,7 +197,6 @@ export interface ArticleSearchResult {
   excerpt?: string;
   score?: number;
   locale: Locale;
-  pageKey: PageKey;
   publishedAt?: string;
 }
 
@@ -213,7 +215,8 @@ export interface ArticleBulkActionItem {
 }
 
 export interface ArticleBulkActionReport {
-  action: 'publish' | 'unpublish' | 'archive' | 'delete' | string;
+  /** تُركت عامة للتوافق (مثلاً delete) */
+  action: 'delete' | string;
   processed: number;
   failed: number;
   items: ArticleBulkActionItem[];
@@ -238,18 +241,13 @@ export interface ArticleEditable {
   contentHtml: string;
   contentRaw: Record<'en' | 'pl', string>;
   locale: Locale;
-  status: ArticleStatus;
-  categories?: string[];
+  /** لم نعد نستخدم الحالات؛ الكل منشور */
   heroImageUrl?: string;
   thumbnailUrl?: string;
-  scheduledFor?: string; // ISO string if present
+  /** ISO string if present */
+  scheduledFor?: string;
   meta?: Record<string, unknown>;
-  /** Deprecated: was used previously; keep as never so it can’t be reintroduced by mistake. */
-  pageKey?: never;
 }
-
-
-
 
 export type ArticlePublished = ArticleDoc & {
   status: 'published';
@@ -274,29 +272,16 @@ export type ArticlesPage = PaginatedArticles;
 /* ----------------------------------------------------
  * 8) Type Guards / Helpers
  * -------------------------------------------------- */
-export function isArticlePublished(
-  a: { status: ArticleStatus; publishedAt?: string },
-): a is { status: 'published'; publishedAt: string } {
-  return a.status === 'published' && !!a.publishedAt;
+
+/** بما أن الحالة الوحيدة هي 'published' */
+export function isArticleStatus(value: unknown): value is ArticleStatus {
+  return value === 'published';
 }
 
-export function isArticleScheduled(a: {
-  status: ArticleStatus;
-  scheduledFor?: string;
-}): boolean {
-  return a.status === 'scheduled' && !!a.scheduledFor;
-}
-/* هل القيمة تنتمي لأحد حالة ArticleStatus؟ */
-export function isArticleStatus(value: unknown): value is ArticleStatus {
-  return (
-    typeof value === 'string' &&
-    ['draft', 'review', 'scheduled', 'published', 'archived'].includes(value)
-  );
-}
 export function buildArticleSeoPayload(
   article: Pick<
     ArticlePublic,
-    'title' | 'description' | 'meta' | 'locale' | 'slug' | 'pageKey' | 'tags'
+    'title' | 'description' | 'meta' | 'locale' | 'slug' | 'tags'
   > & { heroImageUrl?: string },
 ): ArticleSeoPayload {
   return {
@@ -311,6 +296,11 @@ export function buildArticleSeoPayload(
 /* ----------------------------------------------------
  * 9) Legacy / API Compatibility
  * -------------------------------------------------- */
+/**
+ * واجهة مرنة للتعامل مع ردود API القديمة/المختلطة.
+ * أبقينا بعض الحقول اختيارية للتوافق (status/pageKey)، لكن
+ * المنظومة الحديثة تتجاهلهما.
+ */
 export interface ArticleFromApi {
   _id?: string;
   slug?: string;
@@ -318,9 +308,13 @@ export interface ArticleFromApi {
   excerpt?: string | Record<string, string>;
   content?: string | Record<string, string>;
   contentHtml?: string;
-  page?: string;
-  pageKey?: PageKey;
-  status?: ArticleStatus;
+
+  /** لم يعد مستخدمًا في النطاق الحديث */
+  pageKey?: string;
+
+  /** للتوافق فقط: إن وُجد فسيكون 'published' */
+  status?: 'published';
+
   categoryId?: string;
   categoryIds?: string[];
   coverUrl?: string;

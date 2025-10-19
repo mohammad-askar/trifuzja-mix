@@ -1,3 +1,4 @@
+// E:\trifuzja-mix\app\[locale]\admin\articles\[slug]\edit\page.tsx
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
@@ -7,7 +8,6 @@ import type {
   ArticleEditable,
   ArticleFromApi,
   Locale,
-  ArticleStatus,
 } from '@/types/core/article';
 import { ArrowLeft, Eye, Trash2, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -20,7 +20,6 @@ const ArticleEditor = dynamic(() => import('@/app/components/ArticleEditor'), {
 /* -------------------------- helper type guards -------------------------- */
 
 type WithVideoUrl = { videoUrl?: string };
-type WithStatus = { status?: ArticleStatus };
 type WithContent = { content?: unknown; contentHtml?: unknown };
 type WithCategories = { categoryId?: unknown; categoryIds?: unknown };
 type WithMedia = { coverUrl?: unknown; heroImageUrl?: unknown; thumbnailUrl?: unknown };
@@ -28,9 +27,6 @@ type WithMeta = { meta?: unknown; excerpt?: unknown; scheduledFor?: unknown };
 
 const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null;
-
-const hasStatus = (x: unknown): x is WithStatus =>
-  isObject(x) && 'status' in x;
 
 const hasContent = (x: unknown): x is WithContent =>
   isObject(x) && ('content' in x || 'contentHtml' in x);
@@ -44,12 +40,16 @@ const hasMedia = (x: unknown): x is WithMedia =>
 const hasMeta = (x: unknown): x is WithMeta =>
   isObject(x) && ('meta' in x || 'excerpt' in x || 'scheduledFor' in x);
 
+/* ------------------------------- local types ---------------------------- */
+/** نضيف categoryId محليًا فقط لهذه الصفحة بدون تغيير النوع المركزي */
+type ArticleEditableForEditor = ArticleEditable & { categoryId?: string };
+
 /* ------------------------------- state ---------------------------------- */
 
 interface FetchState {
   loading: boolean;
   error: string | null;
-  article: (ArticleEditable & WithVideoUrl) | null;
+  article: (ArticleEditableForEditor & WithVideoUrl) | null;
 }
 
 interface RouteParams extends Record<string, string> {
@@ -64,14 +64,14 @@ function pickStringLocale(value: unknown, loc: string): string | undefined {
   if (typeof value === 'string') return value.trim() || undefined;
   if (isObject(value)) {
     const take = (k: string) => {
-      const v = value[k];
+      const v = (value as Record<string, unknown>)[k];
       return typeof v === 'string' && v.trim() ? v : undefined;
     };
     return (
       take(loc) ??
       take('pl') ??
       take('en') ??
-      (Object.values(value).find((v) => typeof v === 'string' && v.trim()) as
+      (Object.values(value).find((v) => typeof v === 'string' && (v as string).trim()) as
         | string
         | undefined)
     );
@@ -89,8 +89,9 @@ function toLocaleRecord(
     return { en: v, pl: v };
   }
   if (isObject(value)) {
-    const en = typeof value.en === 'string' ? value.en : fallback ?? '';
-    const pl = typeof value.pl === 'string' ? value.pl : en;
+    const obj = value as Record<string, unknown>;
+    const en = typeof obj.en === 'string' ? (obj.en as string) : fallback ?? '';
+    const pl = typeof obj.pl === 'string' ? (obj.pl as string) : en;
     return { en, pl };
   }
   const v = fallback ?? '';
@@ -99,13 +100,8 @@ function toLocaleRecord(
 
 /* ----------------------------- normalize -------------------------------- */
 
-function normalize(api: ArticleFromApi, loc: Locale): ArticleEditable {
+function normalize(api: ArticleFromApi, loc: Locale): ArticleEditableForEditor {
   if (!api.slug) throw new Error('Article payload missing slug');
-
-  const status: ArticleStatus =
-    hasStatus(api) && (api.status === 'draft' || api.status === 'published')
-      ? api.status
-      : 'draft';
 
   const titleRec = toLocaleRecord((api as unknown as { title?: unknown }).title);
 
@@ -116,16 +112,17 @@ function normalize(api: ArticleFromApi, loc: Locale): ArticleEditable {
 
   const contentRecRaw = toLocaleRecord(hasContent(api) ? api.content : undefined, contentHtml);
 
-  const categories =
+  // ↓ بدلاً من إرجاع categories[] (غير معرّفة في ArticleEditable لديك)، نعيد categoryId واحدًا
+  const categoryId =
     hasCategories(api) && typeof api.categoryId === 'string'
-      ? [api.categoryId]
-      : hasCategories(api) && Array.isArray(api.categoryIds)
-      ? (api.categoryIds as string[])
+      ? api.categoryId
+      : hasCategories(api) && Array.isArray(api.categoryIds) && api.categoryIds.length > 0
+      ? (api.categoryIds[0] as string)
       : undefined;
 
   const heroImageUrl =
     hasMedia(api) && typeof api.coverUrl === 'string'
-      ? api.coverUrl
+      ? (api.coverUrl as string)
       : hasMedia(api) && typeof api.heroImageUrl === 'string'
       ? (api.heroImageUrl as string)
       : undefined;
@@ -146,7 +143,7 @@ function normalize(api: ArticleFromApi, loc: Locale): ArticleEditable {
   const description =
     pickStringLocale(hasMeta(api) ? api.excerpt : undefined, loc) ??
     pickStringLocale(
-      hasMeta(api) && isObject(api.meta) ? api.meta.description : undefined,
+      hasMeta(api) && isObject(api.meta) ? (api.meta as Record<string, unknown>).description : undefined,
       loc,
     );
 
@@ -157,9 +154,8 @@ function normalize(api: ArticleFromApi, loc: Locale): ArticleEditable {
     contentHtml,
     contentRaw: contentRecRaw,
     locale: loc,
-    // ⬇️ pageKey removed (you said you don't use it anymore)
-    status,
-    categories,
+    // <-- نضيف الخاصية المحلية:
+    categoryId,
     heroImageUrl,
     thumbnailUrl,
     scheduledFor,
@@ -203,8 +199,8 @@ export default function EditArticlePage() {
 
         if (!res.ok || !isObject(json)) {
           const msg =
-            (isObject(json) && typeof json.error === 'string'
-              ? json.error
+            (isObject(json) && typeof (json as Record<string, unknown>).error === 'string'
+              ? ((json as Record<string, string>).error)
               : `HTTP ${res.status}`) || 'Invalid response';
           throw new Error(msg);
         }
@@ -212,7 +208,9 @@ export default function EditArticlePage() {
         const base = normalize(json as ArticleFromApi, locale);
 
         // carry videoUrl strictly typed
-        const videoUrl = typeof json.videoUrl === 'string' ? json.videoUrl : undefined;
+        const videoUrl = typeof (json as Record<string, unknown>).videoUrl === 'string'
+          ? (json as Record<string, string>).videoUrl
+          : undefined;
 
         setState({
           loading: false,
@@ -336,18 +334,16 @@ export default function EditArticlePage() {
           </div>
 
           <div className="flex items-center gap-2">
-            {article.status === 'published' && (
-              <a
-                href={`/${locale}/articles/${article.slug}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className={btn.view}
-                title={t('View', 'Podgląd')}
-              >
-                <Eye className="w-3.5 h-3.5" />
-                <span className="leading-none">{t('View', 'Podgląd')}</span>
-              </a>
-            )}
+            <a
+              href={`/${locale}/articles/${article.slug}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={btn.view}
+              title={t('View', 'Podgląd')}
+            >
+              <Eye className="w-3.5 h-3.5" />
+              <span className="leading-none">{t('View', 'Podgląd')}</span>
+            </a>
 
             <button
               onClick={() => setDlgOpen(true)}
@@ -361,7 +357,7 @@ export default function EditArticlePage() {
         </div>
       </header>
 
-      {/* editor — sticky Save lives inside ArticleEditor; no other Save here */}
+      {/* editor — Save lives inside ArticleEditor */}
       <ArticleEditor
         mode="edit"
         locale={locale}
@@ -379,10 +375,10 @@ export default function EditArticlePage() {
             en: article.contentRaw?.en ?? article.contentHtml ?? '',
             pl: article.contentRaw?.pl ?? article.contentHtml ?? '',
           },
-          categoryId: article.categories?.[0] || '',
+          // ↓ الآن نمرر categoryId مباشرةً
+          categoryId: article.categoryId || '',
           coverUrl: article.heroImageUrl,
-          // pass-through for auto Video-only UI state inside the editor
-          videoUrl: article.videoUrl ?? '',
+          videoUrl: (article as unknown as WithVideoUrl).videoUrl ?? '',
           meta: article.meta,
         }}
         onSaved={() => router.push(listUrl)}

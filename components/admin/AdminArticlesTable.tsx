@@ -10,17 +10,15 @@ import toast from 'react-hot-toast';
 /* ---------- Types ---------- */
 type Locale = 'en' | 'pl';
 
-/** لو عندك مقالات قديمة بحالات مختلفة، نسمح بها للقراءة فقط */
-type ArticleStatus = 'published' | 'draft' | 'archived' | 'review' | 'scheduled';
-
 type ArticleRow = {
   id: string;
   slug: string;
   title: string;
-  status: ArticleStatus;   // عمليًا عندك الآن "published" فقط
+  /** status لم تعد تُستخدم، لكن نسمح بحقل اختياري لو عندك بيانات قديمة */
+  status?: 'published';
   createdAt?: string;
   updatedAt?: string;
-  locale: Locale;          // كان string — ضبطناه
+  locale: Locale;
 };
 
 interface Props {
@@ -28,32 +26,19 @@ interface Props {
 }
 
 /* ---------- Helpers ---------- */
-const formatDate = (iso?: string): string =>
-  iso
-    ? new Date(iso).toLocaleDateString(undefined, {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-      })
-    : '—';
-
-const statusBadgeClass = (status: ArticleStatus): string => {
-  const base = 'inline-block px-2 py-0.5 rounded text-xs font-semibold';
-  switch (status) {
-    case 'published':
-      return `${base} bg-green-100 text-green-700 dark:bg-green-700/20 dark:text-green-400`;
-    case 'draft':
-      return `${base} bg-yellow-100 text-yellow-800 dark:bg-yellow-700/20 dark:text-yellow-300`;
-    case 'review':
-      return `${base} bg-purple-100 text-purple-700 dark:bg-purple-700/20 dark:text-purple-400`;
-    case 'scheduled':
-      return `${base} bg-blue-100 text-blue-700 dark:bg-blue-700/20 dark:text-blue-400`;
-    case 'archived':
-      return `${base} bg-gray-200 text-gray-600 dark:bg-gray-700/30 dark:text-gray-400`;
-    default:
-      return base;
-  }
+const formatDate = (iso?: string): string => {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime())
+    ? '—'
+    : d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 };
+
+const PublishedBadge = () => (
+  <span className="inline-block px-2 py-0.5 rounded text-xs font-semibold bg-green-100 text-green-700 dark:bg-green-700/20 dark:text-green-400">
+    published
+  </span>
+);
 
 /* ---------- Component ---------- */
 export default function AdminArticlesTable({ initial }: Props) {
@@ -77,9 +62,9 @@ export default function AdminArticlesTable({ initial }: Props) {
       });
 
       // حاول قراءة رسالة واضحة من الـ API
-      let errorMsg = res.statusText;
+      let errorMsg = res.statusText || 'Delete failed';
       try {
-        const json: unknown = await res.json();
+        const json = (await res.json().catch(() => null)) as unknown;
         if (
           json &&
           typeof json === 'object' &&
@@ -89,13 +74,13 @@ export default function AdminArticlesTable({ initial }: Props) {
           errorMsg = (json as { error: string }).error;
         }
       } catch {
-        /* تجاهل فشل JSON — نستعمل statusText بدلًا منه */
+        /* ignore */
       }
 
-      if (!res.ok) throw new Error(errorMsg || 'Delete failed');
+      if (!res.ok) throw new Error(errorMsg);
 
       toast.success('Article deleted');
-      router.refresh(); // re-fetch server data
+      router.refresh();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Delete failed');
     } finally {
@@ -130,11 +115,12 @@ export default function AdminArticlesTable({ initial }: Props) {
             {rows.map((row) => (
               <tr key={row.id} className="border-t border-white/5">
                 <td className="px-4 py-2 font-medium">{row.title}</td>
+
                 <td className="px-4 py-2">
-                  <span className={statusBadgeClass(row.status)}>
-                    {row.status}
-                  </span>
+                  {/* بما أنه ما عاد فيه حالات، اعرض Published دائمًا */}
+                  <PublishedBadge />
                 </td>
+
                 <td className="px-4 py-2">{formatDate(row.createdAt)}</td>
 
                 <td className="px-4 py-2 flex flex-wrap gap-2">

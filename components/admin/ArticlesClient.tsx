@@ -1,32 +1,46 @@
+// E:\trifuzja-mix\components\admin\ArticlesClient.tsx
 'use client';
 
 import Link from 'next/link';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { useState } from 'react';
-// أو احذف الاستيراد واستبدل التأكيد بـ window.confirm
+
+/* ---------- Types ---------- */
+type Locale = 'en' | 'pl';
 
 interface Row {
   id: string;
   slug: string;
   title: string;
-  page: string;
-  status: 'draft' | 'published';
-  createdAt: string | null;
+  createdAt?: string | null;
 }
 
 interface Props {
-  locale: 'en' | 'pl';
+  locale: Locale;
   rows: Row[];
   pageNo: number;
   totalPages: number;
-  limit: number;
-  total: number;
-  search: string;
-  pageKey: string;
-  status: string;
 }
 
-export default function ArticlesTableClient({
+/* ---------- Helpers ---------- */
+function formatDate(iso?: string | null): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime())
+    ? '—'
+    : d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+function PublishedBadge() {
+  return (
+    <span className="px-2 py-1 rounded text-xs bg-green-600 text-white">
+      published
+    </span>
+  );
+}
+
+/* ---------- Component ---------- */
+export default function ArticlesClient({
   locale,
   rows,
   pageNo,
@@ -37,23 +51,46 @@ export default function ArticlesTableClient({
   const pathname = usePathname();
   const [deleting, setDeleting] = useState<string | null>(null);
 
-  function setPage(p: number) {
+  function setPage(p: number): void {
+    const next = Math.min(Math.max(1, p), Math.max(1, totalPages));
     const params = new URLSearchParams(searchParams?.toString() || '');
-    params.set('page', String(p));
-    router.replace(`${pathname}?${params.toString()}`);
+    params.set('page', String(next));
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
   }
 
-  async function deleteRow(slug: string) {
-    if (!confirm(locale === 'pl' ? 'Usunąć artykuł?' : 'Delete article?')) return;
+  async function deleteRow(slug: string): Promise<void> {
+    const ok =
+      typeof window !== 'undefined' &&
+      window.confirm(locale === 'pl' ? 'Usunąć artykuł?' : 'Delete article?');
+    if (!ok) return;
+
     setDeleting(slug);
     try {
-      const res = await fetch(`/api/admin/articles/${slug}`, { method:'DELETE' });
-      const data = await res.json();
+      const res = await fetch(`/api/admin/articles/${encodeURIComponent(slug)}`, {
+        method: 'DELETE',
+      });
+
       if (!res.ok) {
-        alert(data.error || 'Delete failed');
+        let errorText = '';
+        try {
+          const j = (await res.json().catch(() => null)) as { error?: unknown } | null;
+          if (j && typeof j === 'object' && typeof j.error === 'string') {
+            errorText = j.error;
+          }
+        } catch {
+          /* ignore */
+        }
+        if (!errorText) {
+          try {
+            errorText = await res.text();
+          } catch {
+            /* ignore */
+          }
+        }
+        alert(errorText || (locale === 'pl' ? 'Nie udało się usunąć' : 'Delete failed'));
         return;
       }
-      // إعادة تحميل
+
       router.refresh();
     } finally {
       setDeleting(null);
@@ -66,62 +103,67 @@ export default function ArticlesTableClient({
         <thead className="bg-zinc-100 dark:bg-zinc-800">
           <tr>
             <th className="px-3 py-2 text-left">Title</th>
-            <th className="px-3 py-2">Page</th>
-            <th className="px-3 py-2">Status</th>
-            <th className="px-3 py-2">Actions</th>
+            <th className="px-3 py-2 text-center">Status</th>
+            <th className="px-3 py-2 text-center">Created</th>
+            <th className="px-3 py-2 text-center">Actions</th>
           </tr>
         </thead>
+
         <tbody>
-          {rows.map(r => (
+          {rows.map((r) => (
             <tr
               key={r.id}
               className="border-t border-zinc-200 dark:border-zinc-700"
             >
               <td className="px-3 py-2">
                 <div className="font-medium">{r.title}</div>
-                <div className="text-[10px] uppercase text-zinc-500">
-                  {r.slug}
-                </div>
+                <div className="text-[10px] uppercase text-zinc-500">{r.slug}</div>
               </td>
-              <td className="px-3 py-2 text-center uppercase">{r.page}</td>
+
               <td className="px-3 py-2 text-center">
-                <span
-                  className={`px-2 py-1 rounded text-xs ${
-                    r.status === 'published'
-                      ? 'bg-green-600 text-white'
-                      : 'bg-yellow-600 text-white'
-                  }`}
-                >
-                  {r.status}
-                </span>
+                <PublishedBadge />
               </td>
-              <td className="px-3 py-2 flex gap-2 justify-center">
-                <Link
-                  href={`/${locale}/admin/articles/${r.slug}/edit`}
-                  className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs"
-                >
-                  {locale === 'pl' ? 'Edytuj' : 'Edit'}
-                </Link>
-                <Link
-                  href={`/${locale}/articles/${r.slug}`}
-                  className="px-2 py-1 bg-zinc-600 hover:bg-zinc-700 text-white rounded text-xs"
-                  target="_blank"
-                >
-                  {locale === 'pl' ? 'Podgląd' : 'View'}
-                </Link>
-                <button
-                  type="button"
-                  onClick={() => deleteRow(r.slug)}
-                  disabled={deleting === r.slug}
-                  className="px-2 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-xs disabled:opacity-50"
-                >
-                  {deleting === r.slug
-                    ? (locale === 'pl' ? 'Usuwanie…' : 'Deleting…')
-                    : (locale === 'pl' ? 'Usuń' : 'Delete')}
-                </button>
+
+              <td className="px-3 py-2 text-center">
+                {formatDate(r.createdAt ?? undefined)}
+              </td>
+
+              <td className="px-3 py-2">
+                <div className="flex gap-2 justify-center">
+                  <Link
+                    href={`/${locale}/admin/articles/${r.slug}/edit`}
+                    className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs"
+                    aria-label={locale === 'pl' ? 'Edytuj artykuł' : 'Edit article'}
+                  >
+                    {locale === 'pl' ? 'Edytuj' : 'Edit'}
+                  </Link>
+
+                  <Link
+                    href={`/${locale}/articles/${r.slug}`}
+                    className="px-2 py-1 bg-zinc-600 hover:bg-zinc-700 text-white rounded text-xs"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label={locale === 'pl' ? 'Podgląd artykułu' : 'View article'}
+                  >
+                    {locale === 'pl' ? 'Podgląd' : 'View'}
+                  </Link>
+
+                  <button
+                    type="button"
+                    onClick={() => void deleteRow(r.slug)}
+                    disabled={deleting === r.slug}
+                    className="px-2 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-xs disabled:opacity-50"
+                    aria-busy={deleting === r.slug}
+                  >
+                    {deleting === r.slug
+                      ? (locale === 'pl' ? 'Usuwanie…' : 'Deleting…')
+                      : (locale === 'pl' ? 'Usuń' : 'Delete')}
+                  </button>
+                </div>
               </td>
             </tr>
           ))}
+
           {rows.length === 0 && (
             <tr>
               <td
@@ -142,16 +184,18 @@ export default function ArticlesTableClient({
             onClick={() => setPage(pageNo - 1)}
             disabled={pageNo <= 1}
             className="px-3 py-1 text-xs rounded border disabled:opacity-40"
+            aria-label={locale === 'pl' ? 'Poprzednia strona' : 'Previous page'}
           >
             ‹
           </button>
-            <span className="text-xs">
+          <span className="text-xs" aria-live="polite">
             {pageNo}/{totalPages}
           </span>
           <button
             onClick={() => setPage(pageNo + 1)}
             disabled={pageNo >= totalPages}
             className="px-3 py-1 text-xs rounded border disabled:opacity-40"
+            aria-label={locale === 'pl' ? 'Następna strona' : 'Next page'}
           >
             ›
           </button>

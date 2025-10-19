@@ -2,8 +2,7 @@
 // ملاحظـة: لا نستورد ArticleEditable أو UnknownArticleApi لأنها غير موجودة في ملف الأنواع.
 // نعرّف بدلاً منهما أنواعًا محليّة لتجنّب تعديل مجلد types.
 
-// يمكنك استيراد الأنواع الموجودة فعلاً (Locale, PageKey) إن كانت متوفرة
-import type { Locale, PageKey } from '@/types/core/article'; // غيّر المسار لو ملفك في مكان آخر
+import type { Locale } from '@/types/core/article';
 
 /* ---------- أنواع محلية ---------- */
 
@@ -15,18 +14,20 @@ export type UnknownArticleApi = Record<string, unknown>;
 
 /**
  * نسخة مخففة قابلة للتحرير (ما يحتاجه المحرّر).
- * لا نستعمل Optional لكل شيء حتى نضمن الحقول الأساسية.
+ * لا نستعمل Optional لكل شيء حتى نضمن الحقول الأساسية المتاحة.
+ * لا status ولا page هنا.
  */
 export interface EditableArticle {
   slug: string;
-  page: PageKey;
-  status: 'draft' | 'published';
-  categoryId: string;
-  title: Record<string, string>;
-  excerpt?: Record<string, string>;
-  content?: Record<string, string>;
+  /** قد تكون undefined في وضع الفيديو فقط */
+  categoryId?: string;
+  /** حقول متعددة اللغات بثبات en/pl */
+  title: Record<'en' | 'pl', string>;
+  excerpt?: Record<'en' | 'pl', string>;
+  content?: Record<'en' | 'pl', string>;
   coverUrl?: string;
   videoUrl?: string;
+  /** نخزنها كنص (حتى لو وصلتنا كرقم) */
   readingTime?: string;
   createdAt?: Date | string;
   updatedAt?: Date | string;
@@ -34,29 +35,83 @@ export interface EditableArticle {
 
 /* ---------- دوال مساعدة ---------- */
 
-/* تحقق أن القيمة كائن كل قيمه string */
+/** تحقق أن القيمة كائن كل قيمه string */
 function isRecordOfStrings(v: unknown): v is Record<string, string> {
   if (v === null || typeof v !== 'object') return false;
-  return Object.values(v).every(val => typeof val === 'string');
+  return Object.values(v).every((val) => typeof val === 'string');
 }
 
-/* يحوّل قيمة (string | object | undefined) إلى Record<string,string> */
-export function normalizeRecord(
+/**
+ * يحوّل قيمة (string | record | undefined) إلى سجل ثابت {en, pl}.
+ * - إن كانت string نُكرّرها للغتين.
+ * - إن كانت record نأخذ en ثم pl مع بدائل معقولة.
+ * - إن كانت فارغة نُعيد undefined.
+ */
+function toLocaleRecordOptional(
   value: unknown,
   localeFallback: Locale,
-): Record<string, string> | undefined {
+): Record<'en' | 'pl', string> | undefined {
   if (typeof value === 'string') {
     const trimmed = value.trim();
     if (!trimmed) return undefined;
-    return { [localeFallback]: trimmed };
+    return { en: trimmed, pl: trimmed };
   }
-  if (isRecordOfStrings(value)) return value;
+
+  if (isRecordOfStrings(value)) {
+    const obj = value as Record<string, string>;
+    const prefer = (k: string) => {
+      const v = obj[k];
+      return typeof v === 'string' && v.trim() ? v.trim() : undefined;
+    };
+
+    const fallbackAny =
+      Object.values(obj).find((v) => typeof v === 'string' && v.trim())?.trim() ?? '';
+
+    // en أولاً بالترتيب: en -> localeFallback -> أي قيمة متاحة
+    const en =
+      prefer('en') ??
+      prefer(localeFallback) ??
+      fallbackAny;
+
+    // pl أولاً بالترتيب: pl -> localeFallback -> en المختار
+    const pl =
+      prefer('pl') ??
+      prefer(localeFallback) ??
+      en;
+
+    if (!en && !pl) return undefined;
+    return { en: en || pl, pl: pl || en };
+  }
+
   return undefined;
 }
+
+/** قراءة time كرقم أو كنص وإرجاعه كنص ثابت */
+function normalizeReadingTime(rt: unknown): string | undefined {
+  if (typeof rt === 'number' && Number.isFinite(rt) && rt >= 0) {
+    return String(rt);
+  }
+  if (typeof rt === 'string' && rt.trim()) {
+    return rt.trim();
+  }
+  return undefined;
+}
+
+/** تنظيف URL بسيط */
+function normalizeUrl(u: unknown): string | undefined {
+  if (typeof u !== 'string') return undefined;
+  const s = u.trim();
+  return s ? s : undefined;
+}
+
+/* ---------- المُحوّل الرئيسي ---------- */
 
 /**
  * ✨ يحول الرد الخام (غير الموثوق) من API إلى EditableArticle آمن.
  * يرمي أخطاء واضحة لو الحقول الأساسية مفقودة.
+ * - لا يستخدم pageKey ولا status.
+ * - slug مطلوب.
+ * - title يُولَّد من slug لو لم يتوفر.
  */
 export function toEditableArticle(
   apiData: UnknownArticleApi,
@@ -65,43 +120,33 @@ export function toEditableArticle(
   const slug = typeof apiData.slug === 'string' ? apiData.slug.trim() : '';
   if (!slug) throw new Error('Missing slug in article payload');
 
-  const page = (typeof apiData.page === 'string'
-    ? apiData.page
-    : 'multi') as PageKey;
-
-  const status: 'draft' | 'published' =
-    apiData.status === 'published' ? 'published' : 'draft';
-
   const categoryId =
-    typeof apiData.categoryId === 'string'
-      ? apiData.categoryId
-      : '';
-  if (!categoryId) throw new Error('Missing categoryId in article payload');
+    typeof apiData.categoryId === 'string' && apiData.categoryId.trim()
+      ? apiData.categoryId.trim()
+      : undefined;
 
   const title =
-    normalizeRecord(apiData.title, locale) ?? { [locale]: slug };
-  const excerpt = normalizeRecord(apiData.excerpt, locale);
-  const content = normalizeRecord(apiData.content, locale);
+    toLocaleRecordOptional(apiData.title, locale) ?? { en: slug, pl: slug };
 
-  const coverUrl =
-    typeof apiData.coverUrl === 'string' && apiData.coverUrl.trim()
-      ? apiData.coverUrl
+  const excerpt = toLocaleRecordOptional(apiData.excerpt, locale);
+  const content = toLocaleRecordOptional(apiData.content, locale);
+
+  const coverUrl = normalizeUrl(apiData.coverUrl);
+  const videoUrl = normalizeUrl(apiData.videoUrl);
+  const readingTime = normalizeReadingTime(apiData.readingTime);
+
+  const createdAt =
+    apiData.createdAt instanceof Date || typeof apiData.createdAt === 'string'
+      ? (apiData.createdAt as Date | string)
       : undefined;
 
-  const videoUrl =
-    typeof apiData.videoUrl === 'string' && apiData.videoUrl.trim()
-      ? apiData.videoUrl
-      : undefined;
-
-  const readingTime =
-    typeof apiData.readingTime === 'string' && apiData.readingTime.trim()
-      ? apiData.readingTime
+  const updatedAt =
+    apiData.updatedAt instanceof Date || typeof apiData.updatedAt === 'string'
+      ? (apiData.updatedAt as Date | string)
       : undefined;
 
   return {
     slug,
-    page,
-    status,
     categoryId,
     title,
     excerpt,
@@ -109,7 +154,7 @@ export function toEditableArticle(
     coverUrl,
     videoUrl,
     readingTime,
-    createdAt: apiData.createdAt as Date | string | undefined,
-    updatedAt: apiData.updatedAt as Date | string | undefined,
+    createdAt,
+    updatedAt,
   };
 }

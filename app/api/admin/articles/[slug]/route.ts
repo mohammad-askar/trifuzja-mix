@@ -1,4 +1,4 @@
-// 📁 app/api/admin/articles/[slug]/route.ts
+//E:\trifuzja-mix\app\api\admin\articles\[slug]\route.ts
 export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -6,13 +6,10 @@ import clientPromise from '@/types/mongodb';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/authOptions';
 import { z, ZodError } from 'zod';
-import type { ObjectId } from 'mongodb';
+import type { ObjectId, Collection, WithId } from 'mongodb';
 
-/* ------------------------------------------------------------------ */
-/*                           Types & Helpers                           */
-/* ------------------------------------------------------------------ */
+/* ----------------------------- Types/Helpers ---------------------------- */
 
-// App Router can pass params as a Promise — always await
 type Ctx = { params: Promise<{ slug: string }> };
 
 interface ArticleDocDb {
@@ -20,105 +17,65 @@ interface ArticleDocDb {
   slug: string;
   title: string;
   excerpt?: string;
-  content?: string;               // optional to support video-only
-  categoryId?: string;            // may be absent for video-only
+  content?: string;
+  categoryId?: string;
   coverUrl?: string;
-  heroImageUrl?: string;          // legacy mirror
+  heroImageUrl?: string;
   videoUrl?: string;
-  videoOnly?: boolean;            // internal flag
-  isVideoOnly?: boolean;          // public API compatibility
+  videoOnly?: boolean;
+  isVideoOnly?: boolean;
   status?: 'published';
-  createdAt?: Date;               // set on insert
+  createdAt?: Date;
   updatedAt: Date;
   readingTime?: string;
   meta?: Record<string, unknown>;
 }
 
-interface ArticleDocApi extends Omit<ArticleDocDb, '_id'> {
-  _id: string;
-}
+interface ArticleDocApi extends Omit<ArticleDocDb, '_id'> { _id: string }
 
-type AdminSessionShape =
-  | { user?: { role?: string | null } | null }
-  | null
-  | undefined;
+type AdminSessionShape = { user?: { role?: string | null } | null } | null | undefined;
 
 function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null;
 }
-
-function requireAdmin(session: unknown): session is AdminSessionShape & {
-  user: { role: string };
-} {
+function requireAdmin(session: unknown): session is AdminSessionShape & { user: { role: string } } {
   if (!isObject(session)) return false;
-  const user = (session as Record<string, unknown>).user;
-  if (!isObject(user)) return false;
-  const role = (user as Record<string, unknown>).role;
-  return role === 'admin';
+  const u = (session as Record<string, unknown>).user;
+  return isObject(u) && (u as Record<string, unknown>).role === 'admin';
+}
+function responseError(msg: string, status = 400) {
+  return NextResponse.json({ error: msg }, { status });
 }
 
-function normalizeSlug(raw: string) {
-  const slug = raw.trim().toLowerCase();
-  if (!/^[a-z0-9-]{3,}$/.test(slug)) throw new Error('Invalid slug');
-  return slug;
-}
+const urlSchema = z.string().trim().min(1).refine(
+  (v) => v.startsWith('http://') || v.startsWith('https://') || v.startsWith('/'),
+  { message: 'Invalid URL' },
+);
 
-// Absolute http/https or app path starting with /
-const urlSchema = z
-  .string()
-  .trim()
-  .min(1)
-  .refine(
-    (v) => v.startsWith('http://') || v.startsWith('https://') || v.startsWith('/'),
-    { message: 'Invalid URL' },
-  );
-
-// Accept both videoOnly & isVideoOnly; categoryId optional when video-only
-const UpsertSchema = z
-  .object({
-    title: z.string().trim().min(1),
-    excerpt: z.string().trim().optional(),
-    content: z.string().trim().optional(),        // not required anymore
-    categoryId: z.string().trim().optional(),     // optional for video-only
-    coverUrl: urlSchema.optional(),
-    heroImageUrl: urlSchema.optional(),           // legacy mirror
-    videoUrl: urlSchema.optional(),
-    videoOnly: z.boolean().optional(),
-    isVideoOnly: z.boolean().optional(),
-    readingTime: z.union([z.number().int().nonnegative(), z.string().trim().min(1)]).optional(),
-    meta: z.record(z.string(), z.unknown()).optional(),
-  })
-  .superRefine((data, ctx) => {
-    const isVideo = (data.videoOnly ?? data.isVideoOnly) === true;
-
-    if (isVideo) {
-      // Video-only: require videoUrl; no need for content/categoryId
-      if (!data.videoUrl) {
-        ctx.addIssue({
-          path: ['videoUrl'],
-          code: z.ZodIssueCode.custom,
-          message: 'videoUrl is required when videoOnly is true',
-        });
-      }
-    } else {
-      // Text article: require non-empty content and categoryId
-      const c = (data.content ?? '').replace(/<[^>]+>/g, '').trim();
-      if (!c) {
-        ctx.addIssue({
-          path: ['content'],
-          code: z.ZodIssueCode.custom,
-          message: 'content is required when videoOnly is false',
-        });
-      }
-      if (!data.categoryId) {
-        ctx.addIssue({
-          path: ['categoryId'],
-          code: z.ZodIssueCode.custom,
-          message: 'categoryId is required when videoOnly is false',
-        });
-      }
-    }
-  });
+// body schema:
+const UpsertSchema = z.object({
+  title: z.string().trim().min(1),
+  excerpt: z.string().trim().optional(),
+  content: z.string().trim().optional(),
+  categoryId: z.string().trim().optional(),
+  coverUrl: urlSchema.optional(),
+  heroImageUrl: urlSchema.optional(),
+  videoUrl: urlSchema.optional(),
+  videoOnly: z.boolean().optional(),
+  isVideoOnly: z.boolean().optional(),
+  readingTime: z.union([z.number().int().nonnegative(), z.string().trim().min(1)]).optional(),
+  meta: z.record(z.string(), z.unknown()).optional(),
+  preserveSlug: z.boolean().optional(), // 👈 NEW
+}).superRefine((data, ctx) => {
+  const isVideo = (data.videoOnly ?? data.isVideoOnly) === true;
+  if (isVideo) {
+    if (!data.videoUrl) ctx.addIssue({ path: ['videoUrl'], code: z.ZodIssueCode.custom, message: 'videoUrl is required when videoOnly is true' });
+  } else {
+    const c = (data.content ?? '').replace(/<[^>]+>/g, '').trim();
+    if (!c) ctx.addIssue({ path: ['content'], code: z.ZodIssueCode.custom, message: 'content is required when videoOnly is false' });
+    if (!data.categoryId) ctx.addIssue({ path: ['categoryId'], code: z.ZodIssueCode.custom, message: 'categoryId is required when videoOnly is false' });
+  }
+});
 
 function computeReadingTimeFromHtml(html?: string) {
   if (!html) return undefined;
@@ -126,168 +83,210 @@ function computeReadingTimeFromHtml(html?: string) {
   const minutes = Math.max(1, Math.ceil(words / 200));
   return `${minutes} min read`;
 }
-
-function responseError(msg: string, status = 400) {
-  return NextResponse.json({ error: msg }, { status });
-}
-
 function toPlainStringReadingTime(rt?: number | string): string | undefined {
   if (rt === undefined) return undefined;
   return typeof rt === 'number' ? String(rt) : rt;
 }
-
-// يحذف المفاتيح التي قيمتها undefined لمنع إرسالها داخل $set
 function pruneUndefined<T extends Record<string, unknown>>(obj: T): T {
-  for (const k of Object.keys(obj)) {
-    if (obj[k] === undefined) delete obj[k];
-  }
+  for (const k of Object.keys(obj)) if (obj[k] === undefined) delete obj[k];
   return obj;
 }
 
-/* ------------------------------------------------------------------ */
-/*                               GET                                   */
-/* ------------------------------------------------------------------ */
+function makeSlug(input: string): string {
+  return input
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 120);
+}
+
+async function ensureUniqueSlugForEdit(
+  base: string,
+  selfId: ObjectId,
+  coll: Collection<ArticleDocDb>,
+): Promise<string> {
+  const clean = base || 'post';
+  let candidate = clean;
+  let i = 2;
+  while (i < 2000) {
+    const exists = await coll.findOne({ slug: candidate, _id: { $ne: selfId } }, { projection: { _id: 1 } });
+    if (!exists) return candidate;
+    candidate = `${clean}-${i++}`;
+  }
+  throw new Error('Slug collision loop (edit)');
+}
+
+async function ensureUniqueSlugForCreate(
+  base: string,
+  coll: Collection<ArticleDocDb>,
+): Promise<string> {
+  const clean = base || 'post';
+  let candidate = clean;
+  let i = 2;
+  while (i < 2000) {
+    const exists = await coll.findOne({ slug: candidate }, { projection: { _id: 1 } });
+    if (!exists) return candidate;
+    candidate = `${clean}-${i++}`;
+  }
+  throw new Error('Slug collision loop (create)');
+}
+
+function toApi(doc: WithId<ArticleDocDb>): ArticleDocApi {
+  const flag = doc.videoOnly ?? doc.isVideoOnly ?? false;
+  return { ...doc, videoOnly: flag, isVideoOnly: flag, _id: doc._id.toString() };
+}
+
+/* ---------------------------------- GET --------------------------------- */
 
 export async function GET(_req: NextRequest, ctx: Ctx) {
-  const { slug: rawSlug } = await ctx.params;
+  const { slug } = await ctx.params;
   const session = await getServerSession(authOptions);
   if (!requireAdmin(session)) return responseError('Unauthorized', 401);
 
   try {
-    const slug = normalizeSlug(rawSlug);
     const db = (await clientPromise).db();
     const article = await db.collection<ArticleDocDb>('articles').findOne({ slug });
-
     if (!article) return responseError('Not found', 404);
-
-    // Normalize the flags on output as well
-    const videoOnlyFlag = article.videoOnly ?? article.isVideoOnly ?? false;
-    const out: ArticleDocApi = {
-      ...article,
-      videoOnly: videoOnlyFlag,
-      isVideoOnly: videoOnlyFlag,
-      _id: article._id.toString(),
-    };
-    return NextResponse.json(out, { status: 200 });
+    return NextResponse.json(toApi({ ...article, _id: article._id }), { status: 200 });
   } catch (e) {
-    if (e instanceof Error && e.message === 'Invalid slug') {
-      return responseError('Invalid slug', 400);
-    }
     console.error('GET /api/admin/articles/[slug] error:', e);
     return responseError('Internal Server Error', 500);
   }
 }
 
-/* ------------------------------------------------------------------ */
-/*                               PUT (Upsert)                          */
-/* ------------------------------------------------------------------ */
+/* ---------------------------------- PUT --------------------------------- */
 
 export async function PUT(req: NextRequest, ctx: Ctx) {
-  const { slug: rawSlug } = await ctx.params;
+  const { slug: currentSlug } = await ctx.params;
   const session = await getServerSession(authOptions);
   if (!requireAdmin(session)) return responseError('Unauthorized', 401);
 
+  let body: z.infer<typeof UpsertSchema>;
   try {
-    const slug = normalizeSlug(rawSlug);
-    const body = UpsertSchema.parse(await req.json());
+    body = UpsertSchema.parse(await req.json());
+  } catch (e) {
+    return responseError(e instanceof ZodError ? e.issues.map(i => i.message).join(' | ') : 'Invalid body', 400);
+  }
 
-    // derive the unified flag
-    const videoOnlyFlag = (body.videoOnly ?? body.isVideoOnly) === true;
-
-    // readingTime only for text posts (and only if not provided)
-    let readingTime = toPlainStringReadingTime(body.readingTime);
-    if (!videoOnlyFlag && !readingTime && body.content) {
-      readingTime = computeReadingTimeFromHtml(body.content);
-    }
-
-    const now = new Date();
+  try {
     const db = (await clientPromise).db();
     const coll = db.collection<ArticleDocDb>('articles');
 
-    const cover = body.coverUrl ?? body.heroImageUrl;
+    const current = await coll.findOne({ slug: currentSlug }, { projection: { _id: 1, slug: 1 } });
 
-    // ----------- $unset أولاً لتحديد ما سيُزال -----------
-    const unset: Record<string, ''> = {};
-    if (videoOnlyFlag) {
-      if (!body.categoryId || body.categoryId === '') unset.categoryId = '';
-      if (!body.content || body.content.trim() === '') {
-        unset.content = '';
-        unset.readingTime = '';
+    const isVideo = (body.videoOnly ?? body.isVideoOnly) === true;
+    let readingTime = toPlainStringReadingTime(body.readingTime);
+    if (!isVideo && !readingTime && body.content) {
+      readingTime = computeReadingTimeFromHtml(body.content);
+    }
+    const cover = body.coverUrl ?? body.heroImageUrl;
+    const desiredBase = makeSlug(body.title);
+
+    /* ------------------------------- EDIT FLOW ------------------------------ */
+    if (current) {
+      const preserve = body.preserveSlug === true;
+      let finalSlug = current.slug;
+      if (!preserve && desiredBase && desiredBase !== current.slug) {
+        finalSlug = await ensureUniqueSlugForEdit(desiredBase, current._id, coll);
       }
+
+      const unset: Record<string, ''> = {};
+      if (isVideo) {
+        if (!body.categoryId || body.categoryId === '') unset.categoryId = '';
+        if (!body.content || body.content.trim() === '') {
+          unset.content = '';
+          unset.readingTime = '';
+        }
+      }
+
+      const setRaw: Partial<ArticleDocDb> = {
+        slug: finalSlug,
+        title: body.title,
+        excerpt: body.excerpt,
+        content: body.content,
+        categoryId: body.categoryId && body.categoryId !== '' ? body.categoryId : undefined,
+        coverUrl: cover,
+        heroImageUrl: cover,
+        videoUrl: body.videoUrl,
+        videoOnly: isVideo,
+        isVideoOnly: isVideo,
+        readingTime,
+        meta: body.meta as Record<string, unknown> | undefined,
+        status: 'published',
+        updatedAt: new Date(),
+      };
+      const setClean = pruneUndefined(setRaw);
+      for (const k of Object.keys(unset)) delete (setClean as Record<string, unknown>)[k];
+
+      const result = await coll.findOneAndUpdate(
+        { _id: current._id },
+        { $set: setClean, ...(Object.keys(unset).length ? { $unset: unset } : {}) },
+        { returnDocument: 'after' },
+      );
+      const updated = result.value;
+      if (!updated) return responseError('Not found', 404);
+
+      return NextResponse.json(
+        { ok: true, article: toApi(updated), slugChanged: finalSlug !== current.slug, newSlug: finalSlug },
+        { status: 200 },
+      );
     }
 
-    // ----------- $set بدون مفاتيح undefined وبعيدًا عن مفاتيح $unset -----------
-    const setRaw: Partial<ArticleDocDb> = {
-      slug,
+    /* ------------------------------ CREATE FLOW ----------------------------- */
+    const base = desiredBase || makeSlug(currentSlug) || 'post';
+    const finalSlug = await ensureUniqueSlugForCreate(base, coll);
+
+    const newDoc: Omit<ArticleDocDb, '_id'> = {
+      slug: finalSlug,
       title: body.title,
-      updatedAt: now,
-      status: 'published',
-      videoOnly: videoOnlyFlag,
-      isVideoOnly: videoOnlyFlag, // keep both for compatibility
-      // حقول اختيارية (قد تكون undefined)
       excerpt: body.excerpt,
-      content: body.content,                 // سنحذفه لاحقًا إن كان undefined
-      videoUrl: body.videoUrl,
-      meta: body.meta as Record<string, unknown> | undefined,
-      readingTime,
+      content: body.content,
+      categoryId: body.categoryId && body.categoryId !== '' ? body.categoryId : undefined,
       coverUrl: cover,
       heroImageUrl: cover,
-      categoryId: body.categoryId && body.categoryId !== '' ? body.categoryId : undefined,
+      videoUrl: body.videoUrl,
+      videoOnly: isVideo,
+      isVideoOnly: isVideo,
+      readingTime,
+      meta: body.meta as Record<string, unknown> | undefined,
+      status: 'published',
+      createdAt: new Date(),
+      updatedAt: new Date(),
     };
 
-    // إزالة المفاتيح undefined
-    const setClean = pruneUndefined(setRaw);
+    const cleanToInsert = pruneUndefined({ ...newDoc });
+    const insertRes = await coll.insertOne(cleanToInsert as ArticleDocDb);
+    const inserted = await coll.findOne({ _id: insertRes.insertedId });
+    if (!inserted) return responseError('Insert failed', 500);
 
-    // لا تسمح بوضع حقول في $set موجودة أيضًا في $unset (تجنّب التعارض)
-    for (const key of Object.keys(unset)) {
-      delete (setClean as Record<string, unknown>)[key];
-    }
-
-    const updateDoc: {
-      $set: Partial<ArticleDocDb>;
-      $unset?: Record<string, ''>;
-      $setOnInsert: { createdAt: Date };
-    } = {
-      $set: setClean,
-      $setOnInsert: { createdAt: now },
-    };
-    if (Object.keys(unset).length) updateDoc.$unset = unset;
-
-    const res = await coll.updateOne({ slug }, updateDoc, { upsert: true });
-
-    const created = res.upsertedCount > 0;
-    return NextResponse.json({ ok: true, slug, created }, { status: created ? 201 : 200 });
+    return NextResponse.json(
+      { ok: true, article: toApi(inserted), slugChanged: finalSlug !== currentSlug, newSlug: finalSlug, created: true },
+      { status: 201 },
+    );
   } catch (e) {
-    if (e instanceof ZodError) {
-      return responseError(e.issues.map((i) => i.message).join(' | '), 400);
-    }
-    if (e instanceof Error && e.message === 'Invalid slug') {
-      return responseError('Invalid slug', 400);
-    }
     console.error('PUT /api/admin/articles/[slug] error:', e);
     return responseError('Internal Server Error', 500);
   }
 }
 
-/* ------------------------------------------------------------------ */
-/*                               DELETE                                */
-/* ------------------------------------------------------------------ */
+/* -------------------------------- DELETE -------------------------------- */
 
 export async function DELETE(_req: NextRequest, ctx: Ctx) {
-  const { slug: rawSlug } = await ctx.params;
+  const { slug } = await ctx.params;
   const session = await getServerSession(authOptions);
   if (!requireAdmin(session)) return responseError('Unauthorized', 401);
 
   try {
-    const slug = normalizeSlug(rawSlug);
     const db = (await clientPromise).db();
     const res = await db.collection<ArticleDocDb>('articles').deleteOne({ slug });
     if (res.deletedCount === 0) return responseError('Not found', 404);
     return NextResponse.json({ ok: true, slug }, { status: 200 });
   } catch (e) {
-    if (e instanceof Error && e.message === 'Invalid slug') {
-      return responseError('Invalid slug', 400);
-    }
     console.error('DELETE /api/admin/articles/[slug] error:', e);
     return responseError('Internal Server Error', 500);
   }
