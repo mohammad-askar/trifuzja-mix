@@ -22,7 +22,7 @@ const TEXTS: Record<Locale, HomeTexts> = {
   en: {
     heroTitle: 'Initiativa Autonoma',
     heroSubtitle:
-      'Independent publishing initiative outside the traditional editorial structure – creativity, quality, and openness.',
+      'An independent publishing initiative outside the traditional editorial structure — creativity, openness and integrity.',
     cta: 'Start Reading',
     latestArticles: 'Latest Articles',
     latestVideos: 'Latest Videos',
@@ -32,7 +32,7 @@ const TEXTS: Record<Locale, HomeTexts> = {
   pl: {
     heroTitle: 'Initiativa Autonoma',
     heroSubtitle:
-      'Niezależna inicjatywa publikacyjna poza klasyczną strukturą redakcyjną -  kreatywność, jakość i otwartość.',
+      'Niezależna inicjatywa publikacyjna poza klasyczną strukturą redakcyjną — kreatywność, otwartość i rzetelność.',
     cta: 'Czytaj teraz',
     latestArticles: 'Najnowsze artykuły',
     latestVideos: 'Najnowsze wideo',
