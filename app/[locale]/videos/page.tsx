@@ -13,17 +13,17 @@ export async function generateMetadata({
   const titlePart = locale === 'pl' ? 'Wideo' : 'Videos';
 
   return {
-    title: `${titlePart} | Initiativa Autonoma`,
+    title: `${titlePart} | MENSITIVA`,
     description:
       locale === 'pl'
-        ? 'Przeglądaj najnowsze wideo w Initiativa Autonoma.'
-        : 'Browse the latest videos on Initiativa Autonoma.',
+        ? 'Przeglądaj najnowsze wideo w MENSITIVA.'
+        : 'Browse the latest videos on MENSITIVA.',
     openGraph: {
-      title: `${titlePart} | Initiativa Autonoma`,
+      title: `${titlePart} | MENSITIVA`,
       description:
         locale === 'pl'
-          ? 'Przeglądaj najnowsze wideo w Initiativa Autonoma.'
-          : 'Browse the latest videos on Initiativa Autonoma.',
+          ? 'Przeglądaj najnowsze wideo w MENSITIVA.'
+          : 'Browse the latest videos on MENSITIVA.',
     },
     alternates: {
       languages: {

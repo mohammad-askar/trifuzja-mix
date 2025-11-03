@@ -109,7 +109,7 @@ export default function Header({ locale }: HeaderProps) {
           <Image src="/images/logo.png" alt="Logo" width={40} height={40}
                  className="rounded-md group-hover:opacity-80 transition" />
           <span className="text-white font-semibold text-lg group-hover:translate-x-1 transition">
-            Initiativa Autonoma
+            MENSITIVA
           </span>
         </Link>
 

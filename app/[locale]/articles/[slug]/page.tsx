@@ -90,7 +90,7 @@ export async function generateMetadata(
   const canonical = absoluteUrl(`/${locale}/articles/${slug}`);
 
   return {
-    title: `${title} | Initiativa Autonoma`,
+    title: `${title} | MENSITIVA`,
     description: excerpt.slice(0, 150),
     alternates: { canonical },
     openGraph: {

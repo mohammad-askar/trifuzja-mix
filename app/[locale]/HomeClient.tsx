@@ -51,7 +51,7 @@ interface LocaleTexts {
 
 const TEXTS: Record<Locale, LocaleTexts> = {
   en: {
-    heroTitle: 'Initiativa Autonoma',
+    heroTitle: 'MENSITIVA',
     heroSubtitle:
       'An independent publishing initiative outside the traditional editorial structure — creativity, openness and integrity.',
     cta: 'Start Reading',
@@ -64,7 +64,7 @@ const TEXTS: Record<Locale, LocaleTexts> = {
     viewAll: 'View all »',
   },
   pl: {
-    heroTitle: 'Initiativa Autonoma',
+    heroTitle: 'MENSITIVA',
     heroSubtitle:
       'Niezależna inicjatywa publikacyjna poza klasyczną strukturą redakcyjną — kreatywność, otwartość i rzetelność.',
     cta: 'Czytaj teraz',

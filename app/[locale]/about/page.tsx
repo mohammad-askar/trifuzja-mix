@@ -7,7 +7,7 @@ type Locale = 'en' | 'pl';
 const LOCALES: Locale[] = ['en', 'pl'];
 
 // اسم الموقع كمصدر وحيد للحقيقة
-const SITE_NAME = 'Initiativa Autonoma';
+const SITE_NAME = 'MENSITIVA';
 
 // نوع ترجمة صارم بدون any
 type AboutT = {
@@ -29,7 +29,7 @@ const i18n: Record<Locale, AboutT> = {
   en: {
     title: 'About Us',
     intro1:
-      'Initiativa Autonoma is an independent publishing project, designed as a space for content created outside of convention – freely, consciously, and in diverse forms, with an emphasis on reliable storytelling and responsibility toward the audience.',
+      'MENSITIVA is an independent publishing project, designed as a space for content created outside of convention – freely, consciously, and in diverse forms, with an emphasis on reliable storytelling and responsibility toward the audience.',
     intro2:
       'It does not rely on a traditional editorial structure. Instead, it develops flexibly, in tune with topics that deserve attention – without haste, without pressure, and without a format imposed from above.',
     intro3:
@@ -46,7 +46,7 @@ const i18n: Record<Locale, AboutT> = {
   pl: {
     title: 'O nas',
     intro1:
-      'Initiativa Autonoma to niezależny projekt publikacyjny, zaprojektowany jako przestrzeń dla treści tworzonych poza schematem – swobodnie, świadomie i w różnorodnej formie, z naciskiem na rzetelną narrację i odpowiedzialność wobec odbiorcy.',
+      'MENSITIVA to niezależny projekt publikacyjny, zaprojektowany jako przestrzeń dla treści tworzonych poza schematem – swobodnie, świadomie i w różnorodnej formie, z naciskiem na rzetelną narrację i odpowiedzialność wobec odbiorcy.',
     intro2:
       'Nie opiera się na klasycznej strukturze redakcyjnej. Zamiast tego rozwija się elastycznie, w rytmie tematów, które zasługują na uważność – bez pośpiechu, bez presji, bez formatu narzuconego z góry.',
     intro3:
@@ -73,8 +73,8 @@ export async function generateMetadata({
     title: `${t.title} | ${SITE_NAME}`,
     description:
       loc === 'pl'
-        ? 'Kilka słów o platformie Initiativa Autonoma i naszej misji.'
-        : 'About Initiativa Autonoma and our mission.',
+        ? 'Kilka słów o platformie MENSITIVA i naszej misji.'
+        : 'About MENSITIVA and our mission.',
     alternates: { canonical: `/${loc}/about` },
   };
 }

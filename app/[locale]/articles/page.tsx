@@ -35,17 +35,17 @@ export async function generateMetadata({
   const titlePart = locale === 'pl' ? 'Artykuły' : 'Articles';
 
   return {
-    title: `${titlePart} | Initiativa Autonoma`,
+    title: `${titlePart} | MENSITIVA`,
     description:
       locale === 'pl'
-        ? 'Przeglądaj najnowsze artykuły w Initiativa Autonoma.'
-        : 'Browse the latest articles on Initiativa Autonoma.',
+        ? 'Przeglądaj najnowsze artykuły w MENSITIVA.'
+        : 'Browse the latest articles on MENSITIVA.',
     openGraph: {
-      title: `${titlePart} | Initiativa Autonoma`,
+      title: `${titlePart} | MENSITIVA`,
       description:
         locale === 'pl'
-          ? 'Przeglądaj najnowsze artykuły w Initiativa Autonoma.'
-          : 'Browse the latest articles on Initiativa Autonoma.',
+          ? 'Przeglądaj najnowsze artykuły w MENSITIVA.'
+          : 'Browse the latest articles on MENSITIVA.',
     },
     alternates: {
       languages: {

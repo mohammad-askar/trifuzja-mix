@@ -161,17 +161,17 @@ export function Footer({
           <div className="flex items-center gap-2">
             <Image
               src="/images/logo.png"
-              alt="Initiativa Autonoma logo"
+              alt="MENSITIVA logo"
               width={32}
               height={32}
               priority
             />
-            <span className="font-semibold text-white text-lg">Initiativa Autonoma</span>
+            <span className="font-semibold text-white text-lg">MENSITIVA</span>
           </div>
           <p className="text-sm text-gray-400">
             {locale === "pl"
-              ? "Odkrywaj najlepsze treści na Initiativa Autonoma."
-              : "Explore the best content on Initiativa Autonoma."}
+              ? "Odkrywaj najlepsze treści na MENSITIVA."
+              : "Explore the best content on MENSITIVA."}
           </p>
         </div>
 
@@ -332,7 +332,7 @@ export function Footer({
 
       {/* bottom bar */}
       <div className="mt-10 text-center text-xs text-gray-500 border-t border-gray-700 pt-6">
-        © {year} Initiativa Autonoma — {t.copyright}
+        © {year} MENSITIVA — {t.copyright}
       </div>
 
       {/* decorative wave */}

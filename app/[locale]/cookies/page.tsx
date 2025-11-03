@@ -7,7 +7,7 @@ type Locale = 'en' | 'pl';
 const LOCALES: Locale[] = ['en', 'pl'];
 
 // اسم الموقع كمصدر وحيد للحقيقة
-const SITE_NAME = 'Initiativa Autonoma';
+const SITE_NAME = 'MENSITIVA';
 
 const i18n = {
   en: {

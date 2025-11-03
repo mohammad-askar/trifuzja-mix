@@ -15,8 +15,8 @@ export async function generateMetadata({
   const isPL = locale === 'pl';
   return {
     title: isPL
-      ? 'Panel administracyjny | Initiativa Autonoma'
-      : 'Admin Dashboard | Initiativa Autonoma',
+      ? 'Panel administracyjny | MENSITIVA'
+      : 'Admin Dashboard | MENSITIVA',
     alternates: {
       languages: {
         en: '/en/admin/dashboard',

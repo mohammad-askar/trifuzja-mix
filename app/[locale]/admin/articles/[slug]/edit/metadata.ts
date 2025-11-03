@@ -45,8 +45,8 @@ export async function generateMetadata(
 
     const baseTitle =
       loc === 'pl'
-        ? `Edycja: ${pickedTitle} | Panel | Initiativa Autonoma`
-        : `Edit: ${pickedTitle} | Admin | Initiativa Autonoma`;
+        ? `Edycja: ${pickedTitle} | Panel | MENSITIVA`
+        : `Edit: ${pickedTitle} | Admin | MENSITIVA`;
 
     const canonical = `/${loc}/admin/articles/${slug}/edit`;
 
@@ -54,8 +54,8 @@ export async function generateMetadata(
       title: baseTitle,
       description:
         loc === 'pl'
-          ? 'Panel edycji artykułu w Initiativa Autonoma.'
-          : 'Article editing panel in Initiativa Autonoma.',
+          ? 'Panel edycji artykułu w MENSITIVA.'
+          : 'Article editing panel in MENSITIVA.',
       robots: { index: false, follow: false },
       alternates: { canonical },
       openGraph: {
@@ -65,7 +65,7 @@ export async function generateMetadata(
             ? 'Edycja artykułu (panel administratorski).'
             : 'Article edit (admin panel).',
         url: canonical,
-        siteName: 'Initiativa Autonoma',
+        siteName: 'MENSITIVA',
         type: 'website',
       },
       twitter: {
@@ -81,8 +81,8 @@ export async function generateMetadata(
     return {
       title:
         locale === 'pl'
-          ? 'Edycja artykułu | Panel | Initiativa Autonoma'
-          : 'Edit Article | Admin | Initiativa Autonoma',
+          ? 'Edycja artykułu | Panel | MENSITIVA'
+          : 'Edit Article | Admin | MENSITIVA',
       robots: { index: false, follow: false },
     };
   }

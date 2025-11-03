@@ -8,7 +8,7 @@ type Locale = 'en' | 'pl';
 const LOCALES: Locale[] = ['en', 'pl'];
 
 // اسم الموقع كمصدر وحيد للحقيقة
-const SITE_NAME = 'Initiativa Autonoma';
+const SITE_NAME = 'MENSITIVA';
 
 const i18n = {
   en: {
@@ -49,8 +49,8 @@ export async function generateMetadata({
     title: `${t.title} | ${SITE_NAME}`,
     description:
       loc === 'pl'
-        ? 'Formularz kontaktowy serwisu Initiativa Autonoma.'
-        : 'Contact form for Initiativa Autonoma.',
+        ? 'Formularz kontaktowy serwisu MENSITIVA.'
+        : 'Contact form for MENSITIVA.',
     alternates: { canonical: `/${loc}/contact` },
   };
 }

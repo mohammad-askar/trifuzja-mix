@@ -12,7 +12,7 @@ function isLocale(x: unknown): x is Locale {
 }
 
 // اسم الموقع كمصدر وحيد للحقيقة
-const SITE_NAME = 'Initiativa Autonoma';
+const SITE_NAME = 'MENSITIVA';
 
 // بيانات المزوّد (حدّث البريد لاحقًا)
 const PROVIDER = {

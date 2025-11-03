@@ -5,7 +5,7 @@ type Locale = 'en' | 'pl';
 export const dynamic = 'force-static';
 
 /** اسم الموقع كمصدر وحيد للحقيقة */
-const SITE_NAME = 'Initiativa Autonoma';
+const SITE_NAME = 'MENSITIVA';
 
 /** بيانات مزوّد الخدمة (المالك/الكيان القانوني للموقع) */
 const PROVIDER = {
@@ -18,9 +18,9 @@ const PROVIDER = {
   postalCode: '61-303',
   country: 'Poland',
 
-  email: 'contact@example.com',                  // ← حدّثه ببريدك الرسمي إن وُجد
+  email: 'mensitiva1@gmail.com',                  // ← حدّثه ببريدك الرسمي إن وُجد
   phone: '',                                     // اختياري
-  website: process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/+$/, '') || 'https://example.com',
+  website: process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/+$/, '') || 'https://MENSITIVA.com',
 
   /** مُعرّفات اختيارية */
   nip: '',
@@ -85,8 +85,8 @@ export async function generateMetadata({
     title: `${t.title} | ${SITE_NAME}`,
     description:
       loc === 'pl'
-        ? 'Dane identyfikacyjne usługodawcy i nota prawna serwisu Initiativa Autonoma.'
-        : 'Service provider identification and legal notice for Initiativa Autonoma.',
+        ? 'Dane identyfikacyjne usługodawcy i nota prawna serwisu MENSITIVA.'
+        : 'Service provider identification and legal notice for MENSITIVA.',
     alternates: { canonical: `/${loc}/imprint` },
   };
 }

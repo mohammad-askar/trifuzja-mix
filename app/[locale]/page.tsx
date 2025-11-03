@@ -20,9 +20,9 @@ interface HomeTexts {
 
 const TEXTS: Record<Locale, HomeTexts> = {
   en: {
-    heroTitle: 'Initiativa Autonoma',
+    heroTitle: 'MENSITIVA',
     heroSubtitle:
-      'An independent publishing initiative outside the traditional editorial structure — creativity, openness and integrity.',
+      'An independent publishing initiative founded on creativity, openness, and reliability. The name derives from the Latin Mens Inquisitiva („inquisitive mind”) and reflects the portal’s philosophy: curiosity, insight, and the relentless pursuit of knowledge.',
     cta: 'Start Reading',
     latestArticles: 'Latest Articles',
     latestVideos: 'Latest Videos',
@@ -30,9 +30,9 @@ const TEXTS: Record<Locale, HomeTexts> = {
     emptyVideos: 'No videos yet.',
   },
   pl: {
-    heroTitle: 'Initiativa Autonoma',
+    heroTitle: 'MENSITIVA',
     heroSubtitle:
-      'Niezależna inicjatywa publikacyjna poza klasyczną strukturą redakcyjną — kreatywność, otwartość i rzetelność.',
+      'Niezależna inicjatywa publikacyjna oparta na kreatywności, otwartości i rzetelności. Nazwa wywodzi się od łacińskiego określenia Mens Inquisitiva („umysł dociekliwy”) i oddaje filozofię portalu: ciekawość, wnikliwość oraz nieustanne poszukiwanie wiedzy.',
     cta: 'Czytaj teraz',
     latestArticles: 'Najnowsze artykuły',
     latestVideos: 'Najnowsze wideo',
@@ -88,7 +88,7 @@ export async function generateMetadata(
   const { locale } = await params;
   const loc: Locale = locale === 'pl' ? 'pl' : 'en';
   return {
-    title: loc === 'pl' ? 'Strona główna | Initiativa Autonoma' : 'Home | Initiativa Autonoma',
+    title: loc === 'pl' ? 'Strona główna | MENSITIVA' : 'Home | MENSITIVA',
     description:
       loc === 'pl'
         ? 'Najnowsze artykuły po polsku i angielsku.'
