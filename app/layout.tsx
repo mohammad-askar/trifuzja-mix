@@ -46,12 +46,12 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
     <html lang="en" suppressHydrationWarning>
       <head>
         {/* AdSense site verification */}
-        <meta name="google-adsense-account" content="ca-pub-1571082631966764" />
+        <meta name="google-adsense-account" content="ca-pub-5435364552811971" />
 
         {/* AdSense loader – rendered in raw HTML, not deferred */}
         <script
           async
-          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1571082631966764"
+          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5435364552811971"
           crossOrigin="anonymous"
         ></script>
       </head>
