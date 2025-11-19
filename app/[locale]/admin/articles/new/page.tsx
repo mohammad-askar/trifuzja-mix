@@ -1,4 +1,4 @@
-// المسار: /app/[locale]/admin/articles/new/page.tsx
+// app/[locale]/admin/articles/new/page.tsx
 'use client';
 
 import React, { Suspense } from 'react';
@@ -78,8 +78,8 @@ function EditorSkeleton({ hint }: { hint: string }) {
       {/* Excerpt */}
       <div className="mt-4 h-20 w-full rounded-md bg-gray-100 dark:bg-zinc-800" />
 
-      {/* أدوات مختصرة */}
-      <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+      {/* Short controls */}
+      <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
         <div className="h-10 rounded-md bg-gray-100 dark:bg-zinc-800" />
         <div className="h-10 rounded-md bg-gray-100 dark:bg-zinc-800" />
       </div>
@@ -118,7 +118,7 @@ function PageHeader({
           {backText}
         </Link>
       </nav>
-      <h1 className="text-3xl font-semibold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-cyan-600 dark:from-blue-400 dark:to-cyan-400">
+      <h1 className="bg-gradient-to-r from-blue-600 to-cyan-600 bg-clip-text text-3xl font-semibold tracking-tight text-transparent dark:from-blue-400 dark:to-cyan-400">
         {title}
       </h1>
       <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">{subtitle}</p>
@@ -137,13 +137,14 @@ function Notice({
   actionHref?: string;
   actionLabel?: string;
 }) {
-  const base = 'rounded-lg border px-4 py-3 text-sm flex items-start gap-3';
+  const base = 'flex items-start gap-3 rounded-lg border px-4 py-3 text-sm';
   const toneMap = {
     error:
       'border-red-200/60 dark:border-red-900/40 bg-red-50/60 dark:bg-red-950/30 text-red-800 dark:text-red-200',
     info:
       'border-blue-200/60 dark:border-blue-900/40 bg-blue-50/60 dark:bg-blue-950/30 text-blue-800 dark:text-blue-200',
   } as const;
+
   return (
     <div role="alert" className={`${base} ${toneMap[tone]}`}>
       <div className="mt-0.5">⚠️</div>
@@ -166,10 +167,11 @@ function Notice({
 
 /* --------------------------------- Page --------------------------------- */
 export default function NewArticlePage() {
-  // Locale من باراميترات المسار
+  // Locale from route params
   const params = useParams();
   const raw = typeof params?.locale === 'string' ? params.locale : undefined;
   const locale: Locale = isLocale(raw) ? raw : 'en';
+
   const {
     title,
     subtitle,
@@ -188,10 +190,10 @@ export default function NewArticlePage() {
   const { data: session, status } = useSession();
   const role = session?.user?.role as 'admin' | 'editor' | 'viewer' | undefined;
 
-  // تحميل الجلسة
+  // Loading session
   if (status === 'loading') {
     return (
-      <main className="max-w-4xl mx-auto px-4 py-10">
+      <main className="mx-auto max-w-4xl px-4 py-10">
         <PageHeader
           title={title}
           subtitle={subtitle}
@@ -203,10 +205,10 @@ export default function NewArticlePage() {
     );
   }
 
-  // غير مسجّل دخول
+  // Not logged in
   if (!session) {
     return (
-      <main className="max-w-2xl mx-auto px-4 py-10">
+      <main className="mx-auto max-w-2xl px-4 py-10">
         <PageHeader
           title={title}
           subtitle={subtitle}
@@ -224,10 +226,10 @@ export default function NewArticlePage() {
     );
   }
 
-  // صلاحيات
+  // No permission
   if (role !== 'admin' && role !== 'editor') {
     return (
-      <main className="max-w-2xl mx-auto px-4 py-10">
+      <main className="mx-auto max-w-2xl px-4 py-10">
         <PageHeader
           title={title}
           subtitle={subtitle}
@@ -239,9 +241,9 @@ export default function NewArticlePage() {
     );
   }
 
-  // الصفحة
+  // Page with editor
   return (
-    <main className="max-w-4xl mx-auto px-4 py-8">
+    <main className="mx-auto max-w-4xl px-4 py-8">
       <PageHeader
         title={title}
         subtitle={subtitle}
@@ -250,20 +252,20 @@ export default function NewArticlePage() {
       />
 
       <section
-        className="rounded-xl border border-gray-200 dark:border-zinc-700 bg-white/70 dark:bg-zinc-900/70"
+        className="rounded-xl border border-gray-200 bg-white/70 dark:border-zinc-700 dark:bg-zinc-900/70"
         aria-labelledby="editor-section"
       >
         <h2 id="editor-section" className="sr-only">
           Editor
         </h2>
 
-        {/* غلاف بسيط مع padding داخلي للمحرّر */}
+        {/* container for the editor */}
         <div className="editor-host rounded-lg">
           <Suspense fallback={<EditorSkeleton hint={editorLoading} />}>
             <ArticleEditor
               mode="create"
               locale={locale}
-              /* لا نمرّر page/status إطلاقًا — الباك إند ينشر مباشرة */
+              // backend decides publishing; no page/status here
               defaultData={{
                 slug: '',
                 title: { en: '', pl: '' },
@@ -281,9 +283,9 @@ export default function NewArticlePage() {
           </Suspense>
         </div>
 
-        {/* CSS: اجبار التولبار داخل المحرّر أن يكون sticky داخل .editor-host */}
+        {/* Editor-specific global CSS overrides */}
         <style jsx global>{`
-          /* أخفي حقول الصفحات/الحالة كما كان */
+          /* hide page/status fields */
           .editor-host [data-field='page'],
           .editor-host [data-field='status'],
           .editor-host [name='page'],
@@ -301,27 +303,26 @@ export default function NewArticlePage() {
             display: none !important;
           }
 
-          /* ====== شريط الأدوات (القائمة) داخل المحرّر ====== */
+          /* toolbar sticky inside editor */
           .editor-host {
             position: relative;
-            overflow: visible; /* نضمن أن sticky يشتغل حسب الحاوية */
+            overflow: visible;
           }
 
-          /* نستهدف أكثر من شكل للتولبار */
           .editor-host [data-toolbar],
           .editor-host [role='toolbar'],
           .editor-host .editor-toolbar,
           .editor-host [class*='toolbar'] {
             position: sticky !important;
-            top: 0; /* يثبت عند أعلى مساحة المحرر */
+            top: 0;
             z-index: 30;
             background: rgba(255, 255, 255, 0.85);
             -webkit-backdrop-filter: saturate(120%) blur(6px);
             backdrop-filter: saturate(120%) blur(6px);
             border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+            inset: auto !important;
           }
 
-          /* ثيم داكن */
           :root.dark .editor-host [data-toolbar],
           :root.dark .editor-host [role='toolbar'],
           :root.dark .editor-host .editor-toolbar,
@@ -330,20 +331,10 @@ export default function NewArticlePage() {
             border-bottom-color: rgba(255, 255, 255, 0.08);
           }
 
-          /* لو مساحة المحتوى تبدأ مباشرة بعد التولبار، نضيف padding علشان ما يتغطّى */
           .editor-host .editor-content,
           .editor-host [data-editor-content] {
             scroll-margin-top: 56px;
             padding-top: 8px;
-          }
-
-          /* في حال كان التولبار أصلاً fixed من داخل المحرر، نلغيه */
-          .editor-host [data-toolbar],
-          .editor-host [role='toolbar'],
-          .editor-host .editor-toolbar,
-          .editor-host [class*='toolbar'] {
-            position: sticky !important;
-            inset: auto !important; /* ألغِ أي bottom/right/left */
           }
         `}</style>
       </section>

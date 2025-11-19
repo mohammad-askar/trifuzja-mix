@@ -1,3 +1,4 @@
+//E:\trifuzja-mix\app\[locale]\articles\[slug]\error.tsx
 'use client';
 
 import { useEffect } from 'react';

@@ -27,6 +27,7 @@ interface ArticleDoc {
   readingTime?: string;
   meta?: {
     coverPosition?: CoverPosition | LegacyCover;
+    videoLayout?: 'above' | 'below'; // ✅ layout for video vs text
     [key: string]: unknown;
   };
 }
@@ -151,6 +152,10 @@ export default async function ArticlePage(
   const pageUrl = encodeURIComponent(absoluteUrl(`/${locale}/articles/${slug}`));
   const coverPos = toCoverXY(art.meta?.coverPosition);
 
+  // ✅ decide where to place the video; default = above (old behaviour)
+  const videoLayout: 'above' | 'below' =
+    art.meta?.videoLayout === 'below' ? 'below' : 'above';
+
   const SHARE_ICONS = [
     {
       Icon: Twitter,
@@ -183,6 +188,13 @@ export default async function ArticlePage(
     inLanguage: locale,
     articleBody: stripHtml(rawBody || ''),
   };
+
+  // ✅ reusable video block
+  const VideoBlock = art.videoUrl ? (
+    <div className="my-10 aspect-video rounded-lg overflow-hidden shadow-md ring-1 ring-gray-100 dark:ring-zinc-800">
+      <VideoEmbed url={art.videoUrl} title={title} noCookie className="w-full h-full" />
+    </div>
+  ) : null;
 
   return (
     <article className="relative mt-12 max-w-3xl mx-auto px-4 md:px-6 py-4">
@@ -235,11 +247,8 @@ export default async function ArticlePage(
             </blockquote>
           )}
 
-          {art.videoUrl && (
-            <div className="my-10 aspect-video rounded-lg overflow-hidden shadow-md ring-1 ring-gray-100 dark:ring-zinc-800">
-              <VideoEmbed url={art.videoUrl} title={title} noCookie className="w-full h-full" />
-            </div>
-          )}
+          {/* ✅ Video above text */}
+          {videoLayout === 'above' && VideoBlock}
 
           {bodySafe ? (
             <section
@@ -250,6 +259,9 @@ export default async function ArticlePage(
           ) : (
             <p className="mt-8 italic text-center text-gray-500 dark:text-gray-400"></p>
           )}
+
+          {/* ✅ Video below text */}
+          {videoLayout === 'below' && VideoBlock}
         </div>
       </div>
 

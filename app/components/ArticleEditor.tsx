@@ -1,4 +1,4 @@
-//E:\trifuzja-mix\app\components\ArticleEditor.tsx
+// app/components/ArticleEditor.tsx
 'use client';
 
 import React, {
@@ -42,6 +42,8 @@ type UpdateResponse = {
 };
 
 /* ------------------------- Local draft ------------------------- */
+type VideoLayout = 'above' | 'below';
+
 type DraftBlob = {
   ver: 1;
   savedAt: number;
@@ -54,6 +56,7 @@ type DraftBlob = {
     coverPosition: CoverPosition;
     videoUrl: string;
     isVideoOnly: boolean;
+    videoLayout?: VideoLayout;
   };
 };
 
@@ -98,7 +101,12 @@ interface Props {
     categoryId: string;
     coverUrl: string;
     videoUrl: string;
-    meta?: { coverPosition?: 'top' | 'center' | 'bottom' | CoverPosition; [k: string]: unknown };
+    isVideoOnly: boolean;
+    meta?: {
+      coverPosition?: 'top' | 'center' | 'bottom' | CoverPosition;
+      videoLayout?: VideoLayout;
+      [k: string]: unknown;
+    };
   }>;
   onSaved?: (slug: string) => void;
 }
@@ -149,7 +157,16 @@ export default function ArticleEditor({ locale, mode, defaultData = {}, onSaved 
     return { x: 50, y: 50 };
   });
 
-  const initialVideoOnly = isEdit ? Boolean(defaultData.videoUrl) : false;
+  // layout of video vs text: default "below"
+  const [videoLayout, setVideoLayout] = useState<VideoLayout>(() => {
+    if (!isEdit) return 'below';
+    const stored = defaultData.meta?.videoLayout;
+    return stored === 'above' ? 'above' : 'below';
+  });
+
+  const initialVideoOnly = isEdit
+    ? defaultData.isVideoOnly ?? Boolean(defaultData.videoUrl)
+    : false;
   const [isVideoOnly, setIsVideoOnly] = useState<boolean>(initialVideoOnly);
 
   const [saving, setSaving] = useState<boolean>(false);
@@ -186,6 +203,7 @@ export default function ArticleEditor({ locale, mode, defaultData = {}, onSaved 
     setCover('');
     setCoverPosition({ x: 50, y: 50 });
     setIsVideoOnly(false);
+    setVideoLayout('below');
     setSlugAvailable(null);
     setDirty(false);
     setLastSavedAt(null);
@@ -205,6 +223,7 @@ export default function ArticleEditor({ locale, mode, defaultData = {}, onSaved 
     setCover(draft.data.cover);
     setCoverPosition(draft.data.coverPosition);
     setIsVideoOnly(draft.data.isVideoOnly);
+    setVideoLayout(draft.data.videoLayout ?? 'below');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draftKey, mode]);
 
@@ -222,6 +241,7 @@ export default function ArticleEditor({ locale, mode, defaultData = {}, onSaved 
         coverPosition,
         videoUrl: videoUrlVal,
         isVideoOnly,
+        videoLayout,
       },
     };
     writeDraft(draftKey, blob);
@@ -234,6 +254,7 @@ export default function ArticleEditor({ locale, mode, defaultData = {}, onSaved 
     coverPosition,
     videoUrlVal,
     isVideoOnly,
+    videoLayout,
     draftKey,
   ]);
 
@@ -249,6 +270,7 @@ export default function ArticleEditor({ locale, mode, defaultData = {}, onSaved 
     coverPosition,
     videoUrlVal,
     isVideoOnly,
+    videoLayout,
     debouncedPersistDraft,
   ]);
 
@@ -262,7 +284,7 @@ export default function ArticleEditor({ locale, mode, defaultData = {}, onSaved 
     };
   }, [persistDraft]);
 
-  /* -------------------------- autosave to server -------------------------- */
+  /* -------------------------- autosave helpers -------------------------- */
   useEffect(() => {
     if (videoUrlVal && !isVideoOnly) setIsVideoOnly(true);
     if (!videoUrlVal && isVideoOnly && initialVideoOnly) setIsVideoOnly(false);
@@ -298,7 +320,7 @@ export default function ArticleEditor({ locale, mode, defaultData = {}, onSaved 
 
   useEffect(() => {
     setDirty(true);
-  }, [titleVal, excerptVal, content, categoryId, cover, coverPosition, isVideoOnly]);
+  }, [titleVal, excerptVal, content, categoryId, cover, coverPosition, isVideoOnly, videoLayout]);
 
   useEffect(() => {
     const handler = (e: BeforeUnloadEvent) => {
@@ -311,7 +333,7 @@ export default function ArticleEditor({ locale, mode, defaultData = {}, onSaved 
     return () => window.removeEventListener('beforeunload', handler);
   }, [dirty]);
 
-  // AUTOSAVE (EDIT ONLY) — مع الحفاظ على الـ slug
+  // AUTOSAVE (EDIT ONLY)
   const autosave = useCallback(async () => {
     if (!isEdit) return;
     if (!basicsReady || slugAvailable === false) return;
@@ -319,14 +341,13 @@ export default function ArticleEditor({ locale, mode, defaultData = {}, onSaved 
     const payload = {
       title: titleVal,
       excerpt: excerptVal,
-      content: isVideoOnly ? '' : content,
-      categoryId: isVideoOnly ? undefined : categoryId || undefined,
+      content,
+      categoryId: categoryId || undefined,
       coverUrl: cover || undefined,
       videoUrl: videoUrlVal || undefined,
-      readingTime: isVideoOnly ? undefined : reading,
+      readingTime: content ? reading : undefined,
       isVideoOnly,
-      meta: { ...(defaultData.meta || {}), coverPosition },
-      // 👇 أهم شيء هنا
+      meta: { ...(defaultData.meta || {}), coverPosition, videoLayout },
       preserveSlug: true,
     };
 
@@ -341,8 +362,6 @@ export default function ArticleEditor({ locale, mode, defaultData = {}, onSaved 
         await r.json().catch(() => ({} as UpdateResponse));
         setDirty(false);
         setLastSavedAt(new Date());
-        // لا يوجد توجيه هنا إطلاقًا في autosave
-        // وحتى السيرفر لن يغير الـ slug عند preserveSlug=true
         clearDraft(draftKey);
       }
     } finally {
@@ -362,11 +381,11 @@ export default function ArticleEditor({ locale, mode, defaultData = {}, onSaved 
     visibleSlug,
     videoUrlVal,
     coverPosition,
+    videoLayout,
     isVideoOnly,
     draftKey,
   ]);
 
-  // debounce بسيط بالتايمر
   useEffect(() => {
     if (!isEdit) return;
     const id = window.setTimeout(() => {
@@ -383,12 +402,14 @@ export default function ArticleEditor({ locale, mode, defaultData = {}, onSaved 
     coverPosition,
     isVideoOnly,
     videoUrlVal,
+    videoLayout,
     autosave,
   ]);
 
   /* --------------------------- keyboard save --------------------------- */
   const onKeyDown = (e: KeyboardEvent<HTMLFormElement>) => {
-    const isMac = typeof navigator !== 'undefined' && navigator.platform.toUpperCase().includes('MAC');
+    const isMac =
+      typeof navigator !== 'undefined' && navigator.platform.toUpperCase().includes('MAC');
     const saveCombo =
       (isMac && e.metaKey && e.key.toLowerCase() === 's') ||
       (!isMac && e.ctrlKey && e.key.toLowerCase() === 's');
@@ -402,24 +423,27 @@ export default function ArticleEditor({ locale, mode, defaultData = {}, onSaved 
   const onSubmit = async (fv: FormValues) => {
     if (!isEdit && slugAvailable === false) return toast.error(text.slugInUse);
     if (isVideoOnly && !videoUrlVal)
-      return toast.error(locale === 'pl' ? 'Wymagany link do wideo' : 'Video URL is required for video-only');
+      return toast.error(
+        locale === 'pl' ? 'Wymagany link do wideo' : 'Video URL is required for video articles',
+      );
     if (!isVideoOnly && !lenGT3(fv.categoryId || ''))
       return toast.error(locale === 'pl' ? 'Wybierz kategorię' : 'Please pick a category');
     if (!isVideoOnly && !lenGT3(fv.excerpt || ''))
-      return toast.error(locale === 'pl' ? 'Dodaj opis (min 4 znaki)' : 'Please add a summary (min 4 chars)');
+      return toast.error(
+        locale === 'pl' ? 'Dodaj opis (min 4 znaki)' : 'Please add a summary (min 4 chars)',
+      );
 
     const slugForSubmit = isEdit ? visibleSlug : makeSlug(fv.title);
     const payload = {
       title: fv.title,
       excerpt: fv.excerpt,
-      content: isVideoOnly ? '' : content,
-      categoryId: isVideoOnly ? undefined : fv.categoryId || undefined,
+      content,
+      categoryId: fv.categoryId || undefined,
       coverUrl: cover || undefined,
       videoUrl: videoUrlVal || undefined,
-      readingTime: isVideoOnly ? undefined : reading,
+      readingTime: content ? reading : undefined,
       isVideoOnly,
-      meta: { ...(defaultData.meta || {}), coverPosition },
-      // لا نرسل preserveSlug هنا (manual save يسمح بتغيير الـ slug)
+      meta: { ...(defaultData.meta || {}), coverPosition, videoLayout },
     };
 
     const res = await fetch(`/api/admin/articles/${encodeURIComponent(slugForSubmit)}`, {
@@ -472,8 +496,7 @@ export default function ArticleEditor({ locale, mode, defaultData = {}, onSaved 
       key={formKey}
       onSubmit={handleSubmit(onSubmit)}
       onKeyDown={onKeyDown}
-      className="space-y-4 max-w-7xl mx-auto p-1 bg-white/80 dark:bg-zinc-900/80
-                 rounded-xl border border-gray-200 dark:border-zinc-800 shadow-sm"
+      className="mx-auto max-w-7xl space-y-4 rounded-xl border border-gray-200 bg-white/80 p-1 shadow-sm dark:border-zinc-800 dark:bg-zinc-900/80"
     >
       <TitleSlug
         register={register}
@@ -489,21 +512,21 @@ export default function ArticleEditor({ locale, mode, defaultData = {}, onSaved 
           typeof errors.excerpt?.message === 'string'
             ? errors.excerpt.message
             : errors.excerpt?.message
-              ? String(errors.excerpt.message)
-              : undefined
+            ? String(errors.excerpt.message)
+            : undefined
         }
         valueLen={(watch('excerpt') || '').length}
         placeholder={text.excerpt}
         videoOnly={isVideoOnly}
-        notePL="Tryb tylko wideo — opis jest opcjonalny."
-        noteEN="Video-only mode — summary is optional."
+        notePL="Tryb wideo — opis jest opcjonalny, ale możesz go dodać."
+        noteEN="Video mode — summary is optional, but you can still add it."
       />
 
       <CategorySelect
         label={text.cat}
         register={register}
         errors={errors}
-        disabled={isVideoOnly}
+        disabled={false}
       />
 
       <VideoSection
@@ -515,15 +538,34 @@ export default function ArticleEditor({ locale, mode, defaultData = {}, onSaved 
         register={register}
       />
 
-      {!isVideoOnly ? (
-        <EditorBox content={content} setContent={setContent} stats={stats} />
-      ) : (
-        <div className="rounded-lg border border-dashed border-gray-300 dark:border-zinc-700 p-3 text-sm text-gray-500 dark:text-gray-400">
-          {locale === 'pl'
-            ? 'Tryb tylko wideo — edytor tekstu ukryty.'
-            : 'Video-only mode — text editor hidden.'}
-        </div>
-      )}
+      {/* video layout selector */}
+      <div className="mt-2 flex flex-wrap items-center gap-4 text-xs text-gray-600 dark:text-gray-400">
+        <span className="font-medium">
+          {locale === 'pl' ? 'Układ wideo:' : 'Video layout:'}
+        </span>
+        <label className="inline-flex items-center gap-1">
+          <input
+            type="radio"
+            name="videoLayout"
+            value="above"
+            checked={videoLayout === 'above'}
+            onChange={() => setVideoLayout('above')}
+          />
+          {locale === 'pl' ? 'Wideo nad tekstem' : 'Video above text'}
+        </label>
+        <label className="inline-flex items-center gap-1">
+          <input
+            type="radio"
+            name="videoLayout"
+            value="below"
+            checked={videoLayout === 'below'}
+            onChange={() => setVideoLayout('below')}
+          />
+          {locale === 'pl' ? 'Wideo pod tekstem' : 'Video below text'}
+        </label>
+      </div>
+
+      <EditorBox content={content} setContent={setContent} stats={stats} />
 
       <CoverUploader
         locale={locale}
@@ -538,7 +580,11 @@ export default function ArticleEditor({ locale, mode, defaultData = {}, onSaved 
         saving={saving}
         dirty={dirty}
         dirtyCount={Object.keys(dirtyFields).length}
-        savedAtText={!saving && !dirty && lastSavedAt ? text.savedAt(lastSavedAt.toLocaleTimeString()) : null}
+        savedAtText={
+          !saving && !dirty && lastSavedAt
+            ? text.savedAt(lastSavedAt.toLocaleTimeString())
+            : null
+        }
         unsavedText={text.unsaved}
       />
 

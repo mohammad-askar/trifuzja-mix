@@ -1,4 +1,4 @@
-// E:\trifuzja-mix\app\[locale]\admin\articles\[slug]\edit\page.tsx
+// app/[locale]/admin/articles/[slug]/edit/page.tsx
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
@@ -41,8 +41,11 @@ const hasMeta = (x: unknown): x is WithMeta =>
   isObject(x) && ('meta' in x || 'excerpt' in x || 'scheduledFor' in x);
 
 /* ------------------------------- local types ---------------------------- */
-/** نضيف categoryId محليًا فقط لهذه الصفحة بدون تغيير النوع المركزي */
-type ArticleEditableForEditor = ArticleEditable & { categoryId?: string };
+/** نضيف categoryId و isVideoOnly محليًا فقط لهذه الصفحة بدون تغيير النوع المركزي */
+type ArticleEditableForEditor = ArticleEditable & {
+  categoryId?: string;
+  isVideoOnly?: boolean;
+};
 
 /* ------------------------------- state ---------------------------------- */
 
@@ -112,7 +115,6 @@ function normalize(api: ArticleFromApi, loc: Locale): ArticleEditableForEditor {
 
   const contentRecRaw = toLocaleRecord(hasContent(api) ? api.content : undefined, contentHtml);
 
-  // ↓ بدلاً من إرجاع categories[] (غير معرّفة في ArticleEditable لديك)، نعيد categoryId واحدًا
   const categoryId =
     hasCategories(api) && typeof api.categoryId === 'string'
       ? api.categoryId
@@ -143,7 +145,9 @@ function normalize(api: ArticleFromApi, loc: Locale): ArticleEditableForEditor {
   const description =
     pickStringLocale(hasMeta(api) ? api.excerpt : undefined, loc) ??
     pickStringLocale(
-      hasMeta(api) && isObject(api.meta) ? (api.meta as Record<string, unknown>).description : undefined,
+      hasMeta(api) && isObject(api.meta)
+        ? (api.meta as Record<string, unknown>).description
+        : undefined,
       loc,
     );
 
@@ -154,12 +158,12 @@ function normalize(api: ArticleFromApi, loc: Locale): ArticleEditableForEditor {
     contentHtml,
     contentRaw: contentRecRaw,
     locale: loc,
-    // <-- نضيف الخاصية المحلية:
     categoryId,
     heroImageUrl,
     thumbnailUrl,
     scheduledFor,
     meta: hasMeta(api) && isObject(api.meta) ? (api.meta as Record<string, unknown>) : undefined,
+    // isVideoOnly سنضيفه من json الخام في load()
   };
 }
 
@@ -208,14 +212,20 @@ export default function EditArticlePage() {
         const base = normalize(json as ArticleFromApi, locale);
 
         // carry videoUrl strictly typed
-        const videoUrl = typeof (json as Record<string, unknown>).videoUrl === 'string'
-          ? (json as Record<string, string>).videoUrl
-          : undefined;
+        const videoUrl =
+          typeof (json as Record<string, unknown>).videoUrl === 'string'
+            ? (json as Record<string, string>).videoUrl
+            : undefined;
+
+        // ✅ carry isVideoOnly too, so the editor toggle matches DB state
+        const rawIsVideoOnly = (json as Record<string, unknown>).isVideoOnly;
+        const isVideoOnly =
+          typeof rawIsVideoOnly === 'boolean' ? rawIsVideoOnly : undefined;
 
         setState({
           loading: false,
           error: null,
-          article: { ...base, videoUrl },
+          article: { ...base, videoUrl, isVideoOnly },
         });
       } catch (err) {
         if (err instanceof DOMException && err.name === 'AbortError') return;
@@ -375,10 +385,10 @@ export default function EditArticlePage() {
             en: article.contentRaw?.en ?? article.contentHtml ?? '',
             pl: article.contentRaw?.pl ?? article.contentHtml ?? '',
           },
-          // ↓ الآن نمرر categoryId مباشرةً
           categoryId: article.categoryId || '',
           coverUrl: article.heroImageUrl,
           videoUrl: (article as unknown as WithVideoUrl).videoUrl ?? '',
+          isVideoOnly: article.isVideoOnly, // ✅ pass through
           meta: article.meta,
         }}
         onSaved={() => router.push(listUrl)}

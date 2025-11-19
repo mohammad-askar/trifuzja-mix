@@ -1,4 +1,4 @@
-// E:\trifuzja-mix\app\[locale]\videos\page.tsx
+// app/[locale]/videos/page.tsx
 import type { Metadata } from 'next';
 import { notFound, redirect } from 'next/navigation';
 import { headers } from 'next/headers';
@@ -71,7 +71,8 @@ async function fetchVideosServer(opts: {
     pages: number;
   };
 
-  // نعرض فقط العناصر التي لديها videoUrl
+  // API already guarantees videoUrl for /api/videos,
+  // this extra filter is just a safety net and is fine.
   const filtered = (data.articles || []).filter((a) => !!a.videoUrl);
 
   return {
@@ -97,9 +98,11 @@ export default async function VideosPage({
   const pageNo = Number(sp.pageNo ?? '1');
   const limit = Number(sp.limit ?? '9');
 
-  // حماية من قيم غير صحيحة في URL
+  // Basic URL validation / sanitisation
   if (!Number.isFinite(pageNo) || pageNo <= 0) {
-    return redirect(`/${locale}/videos?pageNo=1${sp.limit ? `&limit=${sp.limit}` : ''}`);
+    return redirect(
+      `/${locale}/videos?pageNo=1${sp.limit ? `&limit=${sp.limit}` : ''}`,
+    );
   }
   if (!Number.isFinite(limit) || limit <= 0) {
     return redirect(`/${locale}/videos?pageNo=${pageNo}&limit=9`);
