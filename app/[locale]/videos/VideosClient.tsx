@@ -1,4 +1,4 @@
-// app/[locale]/videos/VideosClient.tsx
+// 📁 app/[locale]/videos/VideosClient.tsx
 'use client';
 
 import Image from 'next/image';
@@ -18,6 +18,7 @@ export type VideoItem = {
   videoUrl?: string;
   createdAt: string | Date;
   isVideoOnly?: boolean;
+  categoryId?: string; // optional, if you need it later
 };
 
 type ApiVideosResponse = {
@@ -35,19 +36,26 @@ type Props = {
   limit: number;
   total: number;
   initialItems: VideoItem[];
+  /** currently selected categories from URL (if any) */
+  catsParam?: string[] | null;
 };
 
 /* ====== Helpers ====== */
 async function fetchVideosPage(opts: {
   pageNo: number;
   limit: number;
+  cats?: string[] | null;
 }): Promise<ApiVideosResponse | null> {
-  const { pageNo, limit } = opts;
+  const { pageNo, limit, cats } = opts;
   const qs = new URLSearchParams();
   if (pageNo) qs.set('pageNo', String(pageNo));
   if (limit) qs.set('limit', String(limit));
+  if (cats && cats.length) {
+    for (const c of cats) {
+      qs.append('cat', c);
+    }
+  }
 
-  // Note: `next: { revalidate }` is ignored in the browser but harmless
   const res = await fetch(`/api/videos?${qs.toString()}`, {
     next: { revalidate: 60 },
   });
@@ -133,6 +141,7 @@ export default function VideosClient({
   limit,
   total: totalFromServer,
   initialItems,
+  catsParam = null,
 }: Props) {
   const [items, setItems] = useState<VideoItem[]>(initialItems);
   const [page, setPage] = useState<number>(initialPage);
@@ -155,7 +164,11 @@ export default function VideosClient({
       if (target < 1 || target > pages || target === page) return;
 
       setLoading(true);
-      const data = await fetchVideosPage({ pageNo: target, limit });
+      const data = await fetchVideosPage({
+        pageNo: target,
+        limit,
+        cats: catsParam && catsParam.length ? catsParam : null,
+      });
       setLoading(false);
 
       if (!data) return;
@@ -166,7 +179,6 @@ export default function VideosClient({
       setTotal(data.total);
       setPage(data.pageNo);
 
-      // Scroll up with header offset
       const HEADER_OFFSET = 88;
       const topY =
         (topRef.current?.getBoundingClientRect().top ?? 0) +
@@ -176,7 +188,7 @@ export default function VideosClient({
       window.scrollTo({ top: Math.max(0, topY), behavior: 'smooth' });
       setTimeout(() => topRef.current?.focus({ preventScroll: true }), 300);
     },
-    [page, pages, limit],
+    [page, pages, limit, catsParam],
   );
 
   const Skel = () => (
@@ -224,7 +236,6 @@ export default function VideosClient({
     <>
       <div ref={topRef} tabIndex={-1} aria-hidden className="h-0" />
 
-      {/* small counter */}
       <div className="mb-4 text-xs text-zinc-600 dark:text-zinc-400">
         {rangeLabel}
       </div>

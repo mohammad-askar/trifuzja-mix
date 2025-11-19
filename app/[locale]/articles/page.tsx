@@ -117,7 +117,7 @@ export default async function ArticlesHub({ params, searchParams }: Props) {
   }));
 
   return (
-    <main className="max-w-6xl mt-3 mx-auto px-4 pt-10 pb-10">
+    <main className="max-w-6xl mx-auto px-4 pt-12 pb-20">
       <CategoryChips categories={cats} selected={selectedCat} />
       <ArticlesList
         locale={locale}
