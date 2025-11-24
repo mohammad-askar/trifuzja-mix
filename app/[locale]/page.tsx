@@ -126,23 +126,23 @@ export default async function LocaleHome(
     })
     .toArray();
 
-  const videosDocs = await db
-    .collection<RawArticle>('articles')
-    .find({ isVideoOnly: true })
-    .sort({ createdAt: -1 })
-    .limit(12)
-    .project<RawArticleProjected>({
-      _id: 1,
-      slug: 1,
-      title: 1,
-      excerpt: 1,
-      coverUrl: 1,
-      videoUrl: 1,
-      createdAt: 1,
-      meta: 1,
-      isVideoOnly: 1,
-    })
-    .toArray();
+  // const videosDocs = await db
+  //   .collection<RawArticle>('articles')
+  //   .find({ isVideoOnly: true })
+  //   .sort({ createdAt: -1 })
+  //   .limit(12)
+  //   .project<RawArticleProjected>({
+  //     _id: 1,
+  //     slug: 1,
+  //     title: 1,
+  //     excerpt: 1,
+  //     coverUrl: 1,
+  //     videoUrl: 1,
+  //     createdAt: 1,
+  //     meta: 1,
+  //     isVideoOnly: 1,
+  //   })
+  //   .toArray();
 
   /** <-- UPDATED: accept Projected type instead of RawArticle */
   const toCard = (d: RawArticleProjected): ArticleCard => {
@@ -162,7 +162,7 @@ export default async function LocaleHome(
   };
 
   const articlesOnly = articlesDocs.map(toCard);
-  const videosOnly = videosDocs.map(toCard);
+  // const videosOnly = videosDocs.map(toCard);
 
   return (
     <main className="min-h-screen bg-gray-900 text-white">
@@ -191,12 +191,12 @@ export default async function LocaleHome(
       />
 
       {/* Videos slider */}
-      <LatestArticlesSlider
+      {/* <LatestArticlesSlider
         locale={loc}
         articles={videosOnly}
         heading={t.latestVideos}
         emptyText={t.emptyVideos}
-      />
+      /> */}
     </main>
   );
 }

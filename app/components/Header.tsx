@@ -8,7 +8,7 @@ import {
   LogIn,
   Menu,
   X,
-  PlayCircle,
+  // PlayCircle,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useSession, signOut } from 'next-auth/react';
@@ -73,7 +73,7 @@ export default function Header({ locale }: HeaderProps) {
   const raw: (NavLink | false)[] = [
     { href: '',            label: t.home,     icon: Home },
     { href: '/articles',   label: t.articles, icon: Newspaper },
-    { href: '/videos',     label: t.videos,   icon: PlayCircle }, // ✅ جديد
+    // { href: '/videos',     label: t.videos,   icon: PlayCircle }, // ✅ جديد
     session ? { href: '/admin/dashboard', label: t.dashboard, icon: User } : false,
     !session ? { href: '/login', label: t.login, icon: LogIn } : false,
   ];

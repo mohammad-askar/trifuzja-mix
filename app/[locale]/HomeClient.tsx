@@ -327,7 +327,6 @@ export default function HomeClient() {
           <div>
             <div className="mb-6 mt-8 flex items-center justify-between">
               <h2 className="text-2xl font-bold">{t.latestVideos}</h2>
-              {/* if you add a /videos page, link to it here */}
             </div>
 
             {videosOnly.length === 0 ? (
