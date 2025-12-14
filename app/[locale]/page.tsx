@@ -1,10 +1,8 @@
 // E:\trifuzja-mix\app\[locale]\page.tsx
 import clientPromise from '@/types/mongodb';
 import type { Metadata } from 'next';
-// import Link from 'next/link';
 import type { ObjectId } from 'mongodb';
 import LatestArticlesSlider from '@/app/components/LatestArticlesSlider';
-import { getYouTubeThumb } from '@/utils/youtube';
 
 type Locale = 'en' | 'pl';
 
@@ -13,9 +11,7 @@ interface HomeTexts {
   heroSubtitle: string;
   cta: string;
   latestArticles: string;
-  latestVideos: string;
   emptyArticles: string;
-  emptyVideos: string;
 }
 
 const TEXTS: Record<Locale, HomeTexts> = {
@@ -25,9 +21,7 @@ const TEXTS: Record<Locale, HomeTexts> = {
       'An independent publishing initiative founded on creativity, openness, and reliability. The name derives from the Latin Mens Inquisitiva („inquisitive mind”) and reflects the portal’s philosophy: curiosity, insight, and the relentless pursuit of knowledge.',
     cta: 'Start Reading',
     latestArticles: 'Latest Articles',
-    latestVideos: 'Latest Videos',
     emptyArticles: 'No articles yet.',
-    emptyVideos: 'No videos yet.',
   },
   pl: {
     heroTitle: 'MENSITIVA',
@@ -35,9 +29,7 @@ const TEXTS: Record<Locale, HomeTexts> = {
       'Niezależna inicjatywa publikacyjna oparta na kreatywności, otwartości i rzetelności. Nazwa wywodzi się od łacińskiego określenia Mens Inquisitiva („umysł dociekliwy”) i oddaje filozofię portalu: ciekawość, wnikliwość oraz nieustanne poszukiwanie wiedzy.',
     cta: 'Czytaj teraz',
     latestArticles: 'Najnowsze artykuły',
-    latestVideos: 'Najnowsze wideo',
     emptyArticles: 'Brak artykułów.',
-    emptyVideos: 'Brak wideo.',
   },
 };
 
@@ -51,16 +43,14 @@ interface RawArticle {
   title: MaybeI18n;
   excerpt?: MaybeI18n;
   coverUrl?: string;
-  videoUrl?: string;
   createdAt?: Date;
   meta?: { coverPosition?: LegacyCoverPos | CoverPosition };
-  isVideoOnly?: boolean;
 }
 
-/** <-- NEW: type that matches what we actually project/return from Mongo */
+/** type that matches what we actually project/return from Mongo */
 type RawArticleProjected = Pick<
   RawArticle,
-  '_id' | 'slug' | 'title' | 'excerpt' | 'coverUrl' | 'videoUrl' | 'createdAt' | 'meta' | 'isVideoOnly'
+  '_id' | 'slug' | 'title' | 'excerpt' | 'coverUrl' | 'createdAt' | 'meta'
 >;
 
 interface ArticleCard {
@@ -69,10 +59,8 @@ interface ArticleCard {
   title: string;
   excerpt: string;
   coverUrl?: string;
-  videoUrl?: string;
   createdAt?: string;
   meta?: { coverPosition?: LegacyCoverPos | CoverPosition };
-  isVideoOnly?: boolean;
 }
 
 function pick(field: MaybeI18n, locale: Locale): string {
@@ -107,62 +95,35 @@ export default async function LocaleHome(
 
   const db = (await clientPromise).db();
 
-  // Fetch separately to avoid starving one slider.
   const articlesDocs = await db
     .collection<RawArticle>('articles')
-    .find({ $or: [{ isVideoOnly: { $exists: false } }, { isVideoOnly: { $ne: true } }] })
+    .find({})
     .sort({ createdAt: -1 })
     .limit(12)
-    .project<RawArticleProjected>({  // <-- tell TS the RESULTING doc shape
+    .project<RawArticleProjected>({
       _id: 1,
       slug: 1,
       title: 1,
       excerpt: 1,
       coverUrl: 1,
-      videoUrl: 1,
       createdAt: 1,
       meta: 1,
-      isVideoOnly: 1,
     })
     .toArray();
 
-  // const videosDocs = await db
-  //   .collection<RawArticle>('articles')
-  //   .find({ isVideoOnly: true })
-  //   .sort({ createdAt: -1 })
-  //   .limit(12)
-  //   .project<RawArticleProjected>({
-  //     _id: 1,
-  //     slug: 1,
-  //     title: 1,
-  //     excerpt: 1,
-  //     coverUrl: 1,
-  //     videoUrl: 1,
-  //     createdAt: 1,
-  //     meta: 1,
-  //     isVideoOnly: 1,
-  //   })
-  //   .toArray();
-
-  /** <-- UPDATED: accept Projected type instead of RawArticle */
   const toCard = (d: RawArticleProjected): ArticleCard => {
-    const ytThumb = d.isVideoOnly && d.videoUrl ? getYouTubeThumb(d.videoUrl) : null;
     return {
       _id: d._id.toString(),
       slug: d.slug,
       title: pick(d.title, loc),
       excerpt: pick(d.excerpt, loc),
-      // Only swap to YouTube thumb for video-only posts.
-      coverUrl: ytThumb ?? d.coverUrl,
-      videoUrl: d.videoUrl,
+      coverUrl: d.coverUrl,
       createdAt: d.createdAt ? d.createdAt.toISOString() : undefined,
       meta: d.meta ? { coverPosition: d.meta.coverPosition } : undefined,
-      isVideoOnly: d.isVideoOnly === true,
     };
   };
 
   const articlesOnly = articlesDocs.map(toCard);
-  // const videosOnly = videosDocs.map(toCard);
 
   return (
     <main className="min-h-screen bg-gray-900 text-white">
@@ -189,14 +150,6 @@ export default async function LocaleHome(
         heading={t.latestArticles}
         emptyText={t.emptyArticles}
       />
-
-      {/* Videos slider */}
-      {/* <LatestArticlesSlider
-        locale={loc}
-        articles={videosOnly}
-        heading={t.latestVideos}
-        emptyText={t.emptyVideos}
-      /> */}
     </main>
   );
 }

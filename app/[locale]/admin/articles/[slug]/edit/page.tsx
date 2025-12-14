@@ -19,7 +19,6 @@ const ArticleEditor = dynamic(() => import('@/app/components/ArticleEditor'), {
 
 /* -------------------------- helper type guards -------------------------- */
 
-type WithVideoUrl = { videoUrl?: string };
 type WithContent = { content?: unknown; contentHtml?: unknown };
 type WithCategories = { categoryId?: unknown; categoryIds?: unknown };
 type WithMedia = { coverUrl?: unknown; heroImageUrl?: unknown; thumbnailUrl?: unknown };
@@ -41,10 +40,9 @@ const hasMeta = (x: unknown): x is WithMeta =>
   isObject(x) && ('meta' in x || 'excerpt' in x || 'scheduledFor' in x);
 
 /* ------------------------------- local types ---------------------------- */
-/** نضيف categoryId و isVideoOnly محليًا فقط لهذه الصفحة بدون تغيير النوع المركزي */
+/** نضيف categoryId محليًا فقط لهذه الصفحة بدون تغيير النوع المركزي */
 type ArticleEditableForEditor = ArticleEditable & {
   categoryId?: string;
-  isVideoOnly?: boolean;
 };
 
 /* ------------------------------- state ---------------------------------- */
@@ -52,7 +50,7 @@ type ArticleEditableForEditor = ArticleEditable & {
 interface FetchState {
   loading: boolean;
   error: string | null;
-  article: (ArticleEditableForEditor & WithVideoUrl) | null;
+  article: ArticleEditableForEditor | null;
 }
 
 interface RouteParams extends Record<string, string> {
@@ -163,7 +161,6 @@ function normalize(api: ArticleFromApi, loc: Locale): ArticleEditableForEditor {
     thumbnailUrl,
     scheduledFor,
     meta: hasMeta(api) && isObject(api.meta) ? (api.meta as Record<string, unknown>) : undefined,
-    // isVideoOnly سنضيفه من json الخام في load()
   };
 }
 
@@ -211,21 +208,10 @@ export default function EditArticlePage() {
 
         const base = normalize(json as ArticleFromApi, locale);
 
-        // carry videoUrl strictly typed
-        const videoUrl =
-          typeof (json as Record<string, unknown>).videoUrl === 'string'
-            ? (json as Record<string, string>).videoUrl
-            : undefined;
-
-        // ✅ carry isVideoOnly too, so the editor toggle matches DB state
-        const rawIsVideoOnly = (json as Record<string, unknown>).isVideoOnly;
-        const isVideoOnly =
-          typeof rawIsVideoOnly === 'boolean' ? rawIsVideoOnly : undefined;
-
         setState({
           loading: false,
           error: null,
-          article: { ...base, videoUrl, isVideoOnly },
+          article: base,
         });
       } catch (err) {
         if (err instanceof DOMException && err.name === 'AbortError') return;
@@ -387,8 +373,6 @@ export default function EditArticlePage() {
           },
           categoryId: article.categoryId || '',
           coverUrl: article.heroImageUrl,
-          videoUrl: (article as unknown as WithVideoUrl).videoUrl ?? '',
-          isVideoOnly: article.isVideoOnly, // ✅ pass through
           meta: article.meta,
         }}
         onSaved={() => router.push(listUrl)}

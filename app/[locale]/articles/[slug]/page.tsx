@@ -1,11 +1,10 @@
 // app/[locale]/articles/[slug]/page.tsx
-import { notFound, redirect } from 'next/navigation';
+import { notFound } from 'next/navigation';
 import clientPromise from '@/types/mongodb';
 import type { Metadata } from 'next';
 import Image from 'next/image';
 import { Facebook, Twitter, Linkedin } from 'lucide-react';
 import DOMPurify from 'isomorphic-dompurify';
-import VideoEmbed from '@/app/components/video/VideoEmbed';
 
 export const revalidate = 0;
 
@@ -21,13 +20,11 @@ interface ArticleDoc {
   excerpt?: MaybeI18n;
   content?: MaybeI18n;
   coverUrl?: string;
-  videoUrl?: string;
   createdAt?: Date;
   updatedAt?: Date;
   readingTime?: string;
   meta?: {
     coverPosition?: CoverPosition | LegacyCover;
-    videoLayout?: 'above' | 'below'; // ✅ layout for video vs text
     [key: string]: unknown;
   };
 }
@@ -68,10 +65,6 @@ function toCoverXY(pos?: CoverPosition | LegacyCover): CoverPosition {
     return { x: 50, y: 50 };
   }
   return { x: Math.max(0, Math.min(100, pos.x)), y: Math.max(0, Math.min(100, pos.y)) };
-}
-/** Detect “pasted URL as slug” patterns */
-function looksLikeUrlSlug(s: string): boolean {
-  return /^(https?:|www\.|https?-|www-)|youtube|youtu(?:-be)?|shorts/.test(s);
 }
 
 /* ----------------------- Metadata ------------------------ */
@@ -120,11 +113,8 @@ export default async function ArticlePage(
   // 1) Load the article
   const art = await fetchArticle(slug);
 
-  // 2) If not found and slug looks like a pasted URL -> send to Videos
+  // 2) If not found -> 404
   if (!art) {
-    if (looksLikeUrlSlug(slug)) {
-      redirect(`/${locale}/videos`);
-    }
     notFound();
   }
 
@@ -151,10 +141,6 @@ export default async function ArticlePage(
 
   const pageUrl = encodeURIComponent(absoluteUrl(`/${locale}/articles/${slug}`));
   const coverPos = toCoverXY(art.meta?.coverPosition);
-
-  // ✅ decide where to place the video; default = above (old behaviour)
-  const videoLayout: 'above' | 'below' =
-    art.meta?.videoLayout === 'below' ? 'below' : 'above';
 
   const SHARE_ICONS = [
     {
@@ -188,13 +174,6 @@ export default async function ArticlePage(
     inLanguage: locale,
     articleBody: stripHtml(rawBody || ''),
   };
-
-  // ✅ reusable video block
-  const VideoBlock = art.videoUrl ? (
-    <div className="my-10 aspect-video rounded-lg overflow-hidden shadow-md ring-1 ring-gray-100 dark:ring-zinc-800">
-      <VideoEmbed url={art.videoUrl} title={title} noCookie className="w-full h-full" />
-    </div>
-  ) : null;
 
   return (
     <article className="relative mt-12 max-w-3xl mx-auto px-4 md:px-6 py-4">
@@ -247,9 +226,6 @@ export default async function ArticlePage(
             </blockquote>
           )}
 
-          {/* ✅ Video above text */}
-          {videoLayout === 'above' && VideoBlock}
-
           {bodySafe ? (
             <section
               className="prose-headings:scroll-mt-24 break-words hyphens-auto"
@@ -259,9 +235,6 @@ export default async function ArticlePage(
           ) : (
             <p className="mt-8 italic text-center text-gray-500 dark:text-gray-400"></p>
           )}
-
-          {/* ✅ Video below text */}
-          {videoLayout === 'below' && VideoBlock}
         </div>
       </div>
 

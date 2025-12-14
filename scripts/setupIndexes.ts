@@ -11,32 +11,39 @@ if (!uri) {
 
 async function main() {
   const client = new MongoClient(uri);
-  await client.connect();
-  const db = client.db();
 
-  console.log('⚙️  إنشاء الفهارس لمجموعة articles...');
-  await db
-    .collection('articles')
-    .createIndex({ slug: 1 }, { unique: true, name: 'idx_slug_unique' });
-  await db
-    .collection('articles')
-    .createIndex({ page: 1, status: 1, createdAt: -1 }, {
-      name: 'idx_page_status_createdAt'
-    });
+  try {
+    await client.connect();
+    const db = client.db();
 
-  console.log('⚙️  إنشاء الفهارس لمجموعة categories...');
-  await db
-    .collection('categories')
-    .createIndex({ slug: 1 }, { unique: true, name: 'idx_cat_slug_unique' });
-  await db
-    .collection('categories')
-    .createIndex({ 'name.en': 1 }, { name: 'idx_cat_name_en' });
+    console.log('⚙️  Creating indexes for "articles"...');
+    await db
+      .collection('articles')
+      .createIndex({ slug: 1 }, { unique: true, name: 'idx_articles_slug_unique' });
 
-  console.log('✅ جميع الفهارس تم إنشاؤها بنجاح.');
-  await client.close();
+    await db
+      .collection('articles')
+      .createIndex(
+        { page: 1, status: 1, createdAt: -1 },
+        { name: 'idx_articles_page_status_createdAt' }
+      );
+
+    console.log('⚙️  Creating indexes for "categories"...');
+    await db
+      .collection('categories')
+      .createIndex({ slug: 1 }, { unique: true, name: 'idx_categories_slug_unique' });
+
+    await db
+      .collection('categories')
+      .createIndex({ 'name.en': 1 }, { name: 'idx_categories_name_en' });
+
+    console.log('✅ All indexes were created successfully.');
+  } catch (err) {
+    console.error('❌ Error while creating indexes:', err);
+    process.exitCode = 1;
+  } finally {
+    await client.close();
+  }
 }
 
-main().catch(err => {
-  console.error('❌ خطأ أثناء إنشاء الفهارس:', err);
-  process.exit(1);
-});
+main();

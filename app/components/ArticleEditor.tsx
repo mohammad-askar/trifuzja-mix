@@ -17,7 +17,6 @@ import SaveFab from '@/app/components/editor/SaveFab';
 import TitleSlug from '@/app/components/editor/TitleSlug';
 import Excerpt from '@/app/components/editor/Excerpt';
 import CategorySelect from '@/app/components/editor/CategorySelect';
-import VideoSection from '@/app/components/editor/VideoSection';
 import EditorBox from '@/app/components/editor/EditorBox';
 import CoverUploader from '@/app/components/editor/CoverUploader';
 import StatusBar from '@/app/components/editor/StatusBar';
@@ -28,7 +27,12 @@ import {
   ArticleFormSchema as schema,
   type ArticleFormValues as FormValues,
 } from '@/app/components/editor/article.schema';
-import { makeSlug, readingTimeFromHtml, lenGT3, fromAny } from '@/app/components/editor/helpers';
+import {
+  makeSlug,
+  readingTimeFromHtml,
+  lenGT3,
+  fromAny,
+} from '@/app/components/editor/helpers';
 import { useDebouncedCallback } from '@/app/components/editor/hooks';
 
 /* ----------------------- API response types ----------------------- */
@@ -42,8 +46,6 @@ type UpdateResponse = {
 };
 
 /* ------------------------- Local draft ------------------------- */
-type VideoLayout = 'above' | 'below';
-
 type DraftBlob = {
   ver: 1;
   savedAt: number;
@@ -54,9 +56,6 @@ type DraftBlob = {
     categoryId: string;
     cover: string;
     coverPosition: CoverPosition;
-    videoUrl: string;
-    isVideoOnly: boolean;
-    videoLayout?: VideoLayout;
   };
 };
 
@@ -100,11 +99,8 @@ interface Props {
     content: string | Record<Locale, string>;
     categoryId: string;
     coverUrl: string;
-    videoUrl: string;
-    isVideoOnly: boolean;
     meta?: {
       coverPosition?: 'top' | 'center' | 'bottom' | CoverPosition;
-      videoLayout?: VideoLayout;
       [k: string]: unknown;
     };
   }>;
@@ -116,20 +112,17 @@ export default function ArticleEditor({ locale, mode, defaultData = {}, onSaved 
   const isEdit = mode === 'edit';
   const text = T[locale];
 
-  const initialDefaults: FormValues =
-    isEdit
-      ? {
-          title: fromAny(defaultData.title, locale) ?? '',
-          excerpt: fromAny(defaultData.excerpt, locale) ?? '',
-          categoryId: defaultData.categoryId ?? '',
-          videoUrl: defaultData.videoUrl ?? '',
-        }
-      : {
-          title: '',
-          excerpt: '',
-          categoryId: '',
-          videoUrl: '',
-        };
+  const initialDefaults: FormValues = isEdit
+    ? {
+        title: fromAny(defaultData.title, locale) ?? '',
+        excerpt: fromAny(defaultData.excerpt, locale) ?? '',
+        categoryId: defaultData.categoryId ?? '',
+      }
+    : {
+        title: '',
+        excerpt: '',
+        categoryId: '',
+      };
 
   const {
     register,
@@ -157,18 +150,6 @@ export default function ArticleEditor({ locale, mode, defaultData = {}, onSaved 
     return { x: 50, y: 50 };
   });
 
-  // layout of video vs text: default "below"
-  const [videoLayout, setVideoLayout] = useState<VideoLayout>(() => {
-    if (!isEdit) return 'below';
-    const stored = defaultData.meta?.videoLayout;
-    return stored === 'above' ? 'above' : 'below';
-  });
-
-  const initialVideoOnly = isEdit
-    ? defaultData.isVideoOnly ?? Boolean(defaultData.videoUrl)
-    : false;
-  const [isVideoOnly, setIsVideoOnly] = useState<boolean>(initialVideoOnly);
-
   const [saving, setSaving] = useState<boolean>(false);
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const [slugAvailable, setSlugAvailable] = useState<boolean | null>(isEdit ? true : null);
@@ -177,7 +158,6 @@ export default function ArticleEditor({ locale, mode, defaultData = {}, onSaved 
   const titleVal = watch('title') ?? '';
   const excerptVal = watch('excerpt') ?? '';
   const categoryId = watch('categoryId') ?? '';
-  const videoUrlVal = (watch('videoUrl') ?? '').trim();
 
   const autoSlug = useMemo(() => makeSlug(titleVal), [titleVal]);
   const visibleSlug = isEdit && defaultData.slug ? defaultData.slug : autoSlug;
@@ -198,12 +178,10 @@ export default function ArticleEditor({ locale, mode, defaultData = {}, onSaved 
   useEffect(() => {
     if (mode !== 'create') return;
     clearDraft(draftKey);
-    reset({ title: '', excerpt: '', categoryId: '', videoUrl: '' });
+    reset({ title: '', excerpt: '', categoryId: '' });
     setContent('');
     setCover('');
     setCoverPosition({ x: 50, y: 50 });
-    setIsVideoOnly(false);
-    setVideoLayout('below');
     setSlugAvailable(null);
     setDirty(false);
     setLastSavedAt(null);
@@ -218,12 +196,9 @@ export default function ArticleEditor({ locale, mode, defaultData = {}, onSaved 
     setValue('title', draft.data.title, { shouldDirty: true });
     setValue('excerpt', draft.data.excerpt, { shouldDirty: true });
     setValue('categoryId', draft.data.categoryId, { shouldDirty: true });
-    setValue('videoUrl', draft.data.videoUrl, { shouldDirty: true });
     setContent(draft.data.content);
     setCover(draft.data.cover);
     setCoverPosition(draft.data.coverPosition);
-    setIsVideoOnly(draft.data.isVideoOnly);
-    setVideoLayout(draft.data.videoLayout ?? 'below');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draftKey, mode]);
 
@@ -239,24 +214,10 @@ export default function ArticleEditor({ locale, mode, defaultData = {}, onSaved 
         categoryId,
         cover,
         coverPosition,
-        videoUrl: videoUrlVal,
-        isVideoOnly,
-        videoLayout,
       },
     };
     writeDraft(draftKey, blob);
-  }, [
-    titleVal,
-    excerptVal,
-    content,
-    categoryId,
-    cover,
-    coverPosition,
-    videoUrlVal,
-    isVideoOnly,
-    videoLayout,
-    draftKey,
-  ]);
+  }, [titleVal, excerptVal, content, categoryId, cover, coverPosition, draftKey]);
 
   const debouncedPersistDraft = useDebouncedCallback(persistDraft, 400);
   useEffect(() => {
@@ -268,9 +229,6 @@ export default function ArticleEditor({ locale, mode, defaultData = {}, onSaved 
     categoryId,
     cover,
     coverPosition,
-    videoUrlVal,
-    isVideoOnly,
-    videoLayout,
     debouncedPersistDraft,
   ]);
 
@@ -284,15 +242,8 @@ export default function ArticleEditor({ locale, mode, defaultData = {}, onSaved 
     };
   }, [persistDraft]);
 
-  /* -------------------------- autosave helpers -------------------------- */
-  useEffect(() => {
-    if (videoUrlVal && !isVideoOnly) setIsVideoOnly(true);
-    if (!videoUrlVal && isVideoOnly && initialVideoOnly) setIsVideoOnly(false);
-  }, [videoUrlVal, isVideoOnly, initialVideoOnly]);
-
-  const basicsReady = isVideoOnly
-    ? lenGT3(titleVal) && videoUrlVal.length > 0
-    : lenGT3(titleVal) && lenGT3(excerptVal) && lenGT3(categoryId);
+  const basicsReady =
+    lenGT3(titleVal) && lenGT3(excerptVal) && lenGT3(categoryId);
 
   const canSubmit = basicsReady && !isSubmitting && (isEdit || slugAvailable !== false);
 
@@ -320,7 +271,7 @@ export default function ArticleEditor({ locale, mode, defaultData = {}, onSaved 
 
   useEffect(() => {
     setDirty(true);
-  }, [titleVal, excerptVal, content, categoryId, cover, coverPosition, isVideoOnly, videoLayout]);
+  }, [titleVal, excerptVal, content, categoryId, cover, coverPosition]);
 
   useEffect(() => {
     const handler = (e: BeforeUnloadEvent) => {
@@ -344,10 +295,8 @@ export default function ArticleEditor({ locale, mode, defaultData = {}, onSaved 
       content,
       categoryId: categoryId || undefined,
       coverUrl: cover || undefined,
-      videoUrl: videoUrlVal || undefined,
       readingTime: content ? reading : undefined,
-      isVideoOnly,
-      meta: { ...(defaultData.meta || {}), coverPosition, videoLayout },
+      meta: { ...(defaultData.meta || {}), coverPosition },
       preserveSlug: true,
     };
 
@@ -379,10 +328,7 @@ export default function ArticleEditor({ locale, mode, defaultData = {}, onSaved 
     cover,
     reading,
     visibleSlug,
-    videoUrlVal,
     coverPosition,
-    videoLayout,
-    isVideoOnly,
     draftKey,
   ]);
 
@@ -400,9 +346,6 @@ export default function ArticleEditor({ locale, mode, defaultData = {}, onSaved 
     categoryId,
     cover,
     coverPosition,
-    isVideoOnly,
-    videoUrlVal,
-    videoLayout,
     autosave,
   ]);
 
@@ -422,13 +365,9 @@ export default function ArticleEditor({ locale, mode, defaultData = {}, onSaved 
   /* ------------------------------ submit ------------------------------ */
   const onSubmit = async (fv: FormValues) => {
     if (!isEdit && slugAvailable === false) return toast.error(text.slugInUse);
-    if (isVideoOnly && !videoUrlVal)
-      return toast.error(
-        locale === 'pl' ? 'Wymagany link do wideo' : 'Video URL is required for video articles',
-      );
-    if (!isVideoOnly && !lenGT3(fv.categoryId || ''))
+    if (!lenGT3(fv.categoryId || ''))
       return toast.error(locale === 'pl' ? 'Wybierz kategorię' : 'Please pick a category');
-    if (!isVideoOnly && !lenGT3(fv.excerpt || ''))
+    if (!lenGT3(fv.excerpt || ''))
       return toast.error(
         locale === 'pl' ? 'Dodaj opis (min 4 znaki)' : 'Please add a summary (min 4 chars)',
       );
@@ -440,10 +379,8 @@ export default function ArticleEditor({ locale, mode, defaultData = {}, onSaved 
       content,
       categoryId: fv.categoryId || undefined,
       coverUrl: cover || undefined,
-      videoUrl: videoUrlVal || undefined,
       readingTime: content ? reading : undefined,
-      isVideoOnly,
-      meta: { ...(defaultData.meta || {}), coverPosition, videoLayout },
+      meta: { ...(defaultData.meta || {}), coverPosition },
     };
 
     const res = await fetch(`/api/admin/articles/${encodeURIComponent(slugForSubmit)}`, {
@@ -517,9 +454,6 @@ export default function ArticleEditor({ locale, mode, defaultData = {}, onSaved 
         }
         valueLen={(watch('excerpt') || '').length}
         placeholder={text.excerpt}
-        videoOnly={isVideoOnly}
-        notePL="Tryb wideo — opis jest opcjonalny, ale możesz go dodać."
-        noteEN="Video mode — summary is optional, but you can still add it."
       />
 
       <CategorySelect
@@ -528,42 +462,6 @@ export default function ArticleEditor({ locale, mode, defaultData = {}, onSaved 
         errors={errors}
         disabled={false}
       />
-
-      <VideoSection
-        checked={isVideoOnly}
-        onToggle={setIsVideoOnly}
-        label={text.videoOnly}
-        hint={text.videoOnlyHint}
-        urlLabel={text.videoUrlLabel}
-        register={register}
-      />
-
-      {/* video layout selector */}
-      <div className="mt-2 flex flex-wrap items-center gap-4 text-xs text-gray-600 dark:text-gray-400">
-        <span className="font-medium">
-          {locale === 'pl' ? 'Układ wideo:' : 'Video layout:'}
-        </span>
-        <label className="inline-flex items-center gap-1">
-          <input
-            type="radio"
-            name="videoLayout"
-            value="above"
-            checked={videoLayout === 'above'}
-            onChange={() => setVideoLayout('above')}
-          />
-          {locale === 'pl' ? 'Wideo nad tekstem' : 'Video above text'}
-        </label>
-        <label className="inline-flex items-center gap-1">
-          <input
-            type="radio"
-            name="videoLayout"
-            value="below"
-            checked={videoLayout === 'below'}
-            onChange={() => setVideoLayout('below')}
-          />
-          {locale === 'pl' ? 'Wideo pod tekstem' : 'Video below text'}
-        </label>
-      </div>
 
       <EditorBox content={content} setContent={setContent} stats={stats} />
 

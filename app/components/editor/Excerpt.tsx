@@ -12,11 +12,6 @@ type ExcerptProps = {
   valueLen: number;
   /** Placeholder */
   placeholder: string;
-  /** عند true: نعرض ملاحظة أنه اختياري (لا نعطّله) */
-  videoOnly: boolean;
-  /** ملاحظات اختيارية */
-  notePL: string;
-  noteEN: string;
 };
 
 export default function Excerpt({
@@ -24,22 +19,15 @@ export default function Excerpt({
   errorMessage,
   valueLen,
   placeholder,
-  videoOnly,
-  notePL,
-  noteEN,
 }: ExcerptProps) {
-  const optionalNote = videoOnly ? (notePL || noteEN || '') : '';
-
   return (
     <div className="space-y-1">
       <textarea
         {...registerExcerpt('excerpt')}
         rows={3}
         placeholder={placeholder}
-        // لا نعطّله في وضع الفيديو — فقط نعرض أنه اختياري
         disabled={false}
         aria-invalid={!!errorMessage || undefined}
-        aria-describedby={optionalNote ? 'excerpt-note' : undefined}
         className={[
           'w-full rounded-lg border px-3 py-2 bg-white dark:bg-zinc-900 resize-none',
           'focus:outline-none focus:ring-2 focus:ring-blue-500/40',
@@ -57,12 +45,6 @@ export default function Excerpt({
         )}
         <span>{valueLen}/400</span>
       </div>
-
-      {optionalNote && (
-        <p id="excerpt-note" className="text-xs text-gray-500">
-          {optionalNote}
-        </p>
-      )}
     </div>
   );
 }

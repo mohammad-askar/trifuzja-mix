@@ -46,7 +46,6 @@ export interface ArticleDoc {
   slug: string;
   title: string;
   coverUrl?: string;
-  videoUrl?: string;
   description?: string;
   /** HTML النهائي للعرض */
   contentHtml: string;
@@ -319,7 +318,6 @@ export interface ArticleFromApi {
   categoryIds?: string[];
   coverUrl?: string;
   heroImageUrl?: string;
-  videoUrl?: string;
   thumbnailUrl?: string;
   readingTime?: number;
   createdAt?: string | Date;

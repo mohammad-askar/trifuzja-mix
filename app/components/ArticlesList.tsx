@@ -16,8 +16,6 @@ interface ArticleSummary {
   coverUrl?: string;
   readingTime?: string;
   meta?: { coverPosition?: CoverPos };
-  isVideoOnly?: boolean;
-  videoUrl?: string;
 }
 
 interface Props {
@@ -29,14 +27,18 @@ type ApiListResponse =
   | ArticleSummary[]
   | { articles?: ArticleSummary[]; total?: number };
 
-/* إعدادات */
+/* Settings */
 const DEFAULT_LOCALE: Locale = 'pl';
 const LIMIT = 9;
 
 /* ------------ Helpers ------------ */
 function getErrorMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
-  try { return JSON.stringify(err); } catch { return String(err); }
+  try {
+    return JSON.stringify(err);
+  } catch {
+    return String(err);
+  }
 }
 
 async function fetchPage(opts: {
@@ -47,6 +49,7 @@ async function fetchPage(opts: {
   signal?: AbortSignal;
 }): Promise<{ list: ArticleSummary[]; total: number }> {
   const { cats, pageNo, limit, locale, signal } = opts;
+
   const qs = new URLSearchParams({
     pageNo: String(pageNo),
     limit: String(limit),
@@ -58,15 +61,22 @@ async function fetchPage(opts: {
   if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
 
   const data: ApiListResponse = await res.json();
+
   return Array.isArray(data)
     ? { list: data, total: data.length }
     : { list: data.articles ?? [], total: data.total ?? 0 };
 }
 
-/** يبني نافذة ترقيم مثل: 1 … 3 4 [5] 6 7 … 20 */
-function buildPageWindow(current: number, totalPages: number, windowSize = 2): (number | '…')[] {
+/** Builds a pagination window like: 1 … 3 4 [5] 6 7 … 20 */
+function buildPageWindow(
+  current: number,
+  totalPages: number,
+  windowSize = 2,
+): (number | '…')[] {
   const pages: (number | '…')[] = [];
-  const add = (p: number | '…') => { if (pages[pages.length - 1] !== p) pages.push(p); };
+  const add = (p: number | '…') => {
+    if (pages[pages.length - 1] !== p) pages.push(p);
+  };
 
   const start = Math.max(2, current - windowSize);
   const end = Math.min(totalPages - 1, current + windowSize);
@@ -96,10 +106,10 @@ export default function ArticlesList({ catsParam, locale }: Props) {
 
   const totalPages = Math.max(1, Math.ceil(total / LIMIT));
 
-  // مرجع لأعلى الشبكة لتمرير سلس مع تعويض الهيدر
+  // Reference to scroll/focus at the top of the grid
   const topRef = useRef<HTMLDivElement>(null);
 
-  // تحميل أولي أو عند تغيير الفئات
+  // Initial load (or when categories change)
   const firstAbort = useRef<AbortController | null>(null);
   useEffect(() => {
     firstAbort.current?.abort();
@@ -110,7 +120,11 @@ export default function ArticlesList({ catsParam, locale }: Props) {
       setLoading(true);
       try {
         const { list, total: t } = await fetchPage({
-          cats, pageNo: 1, limit: LIMIT, locale: effectiveLocale, signal: controller.signal,
+          cats,
+          pageNo: 1,
+          limit: LIMIT,
+          locale: effectiveLocale,
+          signal: controller.signal,
         });
         setItems(list);
         setTotal(t);
@@ -119,7 +133,9 @@ export default function ArticlesList({ catsParam, locale }: Props) {
         if (!controller.signal.aborted) {
           console.error(e);
           toast.error(getErrorMessage(e));
-          setItems([]); setTotal(0); setPage(1);
+          setItems([]);
+          setTotal(0);
+          setPage(1);
         }
       } finally {
         if (!controller.signal.aborted) setLoading(false);
@@ -129,44 +145,52 @@ export default function ArticlesList({ catsParam, locale }: Props) {
     return () => controller.abort();
   }, [cats, effectiveLocale]);
 
-  // تغيير الصفحة + تمرير لأعلى مع تعويض الهيدر
-  const changePage = useCallback(async (target: number) => {
-    if (target < 1 || target > totalPages || target === page) return;
+  // Change page + smooth scroll to top (account for fixed header)
+  const changePage = useCallback(
+    async (target: number) => {
+      if (target < 1 || target > totalPages || target === page) return;
 
-    const controller = new AbortController();
-    try {
-      setLoading(true);
-      const { list } = await fetchPage({
-        cats, pageNo: target, limit: LIMIT, locale: effectiveLocale, signal: controller.signal,
-      });
-      setItems(list);
-      setPage(target);
+      const controller = new AbortController();
+      try {
+        setLoading(true);
+        const { list } = await fetchPage({
+          cats,
+          pageNo: target,
+          limit: LIMIT,
+          locale: effectiveLocale,
+          signal: controller.signal,
+        });
+        setItems(list);
+        setPage(target);
 
-      // تمرير لأعلى الشبكة (تعويض الهيدر الثابت)
-      if (typeof window !== 'undefined') {
-        const HEADER_OFFSET = 88; // ← عدّلها حسب ارتفاع الهيدر لديك
-        const topY =
-          (topRef.current?.getBoundingClientRect().top ?? 0) +
-          window.scrollY -
-          HEADER_OFFSET;
+        if (typeof window !== 'undefined') {
+          const HEADER_OFFSET = 88; // adjust to your header height
+          const topY =
+            (topRef.current?.getBoundingClientRect().top ?? 0) +
+            window.scrollY -
+            HEADER_OFFSET;
 
-        window.scrollTo({ top: Math.max(0, topY), behavior: 'smooth' });
-        setTimeout(() => topRef.current?.focus({ preventScroll: true }), 350);
+          window.scrollTo({ top: Math.max(0, topY), behavior: 'smooth' });
+          setTimeout(() => topRef.current?.focus({ preventScroll: true }), 350);
+        }
+      } catch (e) {
+        if (!controller.signal.aborted) {
+          console.error(e);
+          toast.error(getErrorMessage(e));
+        }
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
       }
-    } catch (e) {
-      if (!controller.signal.aborted) {
-        console.error(e);
-        toast.error(getErrorMessage(e));
-      }
-    } finally {
-      if (!controller.signal.aborted) setLoading(false);
-    }
-  }, [cats, effectiveLocale, page, totalPages]);
+    },
+    [cats, effectiveLocale, page, totalPages],
+  );
 
   /* ------ UI ------ */
   const Skel = () => (
-    <div className="rounded-xl border border-zinc-200 bg-white/60 p-3 shadow-sm animate-pulse h-[260px]
-                    dark:border-zinc-800 dark:bg-gray-900/70" />
+    <div
+      className="rounded-xl border border-zinc-200 bg-white/60 p-3 shadow-sm animate-pulse h-[260px]
+                 dark:border-zinc-800 dark:bg-gray-900/70"
+    />
   );
 
   const t = {
@@ -187,7 +211,6 @@ export default function ArticlesList({ catsParam, locale }: Props) {
     return `${t.showing} ${start}–${end} ${t.of} ${total} ${t.articles}`;
   })();
 
-  // أنماط الأزرار (نفسها المستخدمة في الفيديوهات لضمان الاتساق)
   const baseBtn =
     'inline-flex items-center justify-center rounded-full transition select-none ' +
     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 ' +
@@ -204,20 +227,17 @@ export default function ArticlesList({ catsParam, locale }: Props) {
 
   return (
     <>
-      {/* مرجع أعلى الشبكة لتحسين التمرير والتركيز */}
       <div ref={topRef} tabIndex={-1} aria-hidden className="h-0" />
 
-      {/* عدّاد صغير */}
-      <div className="mb-4 text-xs text-zinc-600 dark:text-zinc-400">
-        {rangeLabel}
-      </div>
+      <div className="mb-4 text-xs text-zinc-600 dark:text-zinc-400">{rangeLabel}</div>
 
       <section className="grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
         {items.map((a) => (
           <ArticleCard key={a._id} article={a} locale={effectiveLocale} />
         ))}
 
-        {loading && items.length === 0 &&
+        {loading &&
+          items.length === 0 &&
           Array.from({ length: LIMIT }).map((_, i) => <Skel key={`init-${i}`} />)}
 
         {!loading && items.length === 0 && (
@@ -227,10 +247,9 @@ export default function ArticlesList({ catsParam, locale }: Props) {
         )}
       </section>
 
-      {/* شريط الترقيم — متجاوب (موبايل مبسّط / سطح مكتب كامل) */}
       {totalPages > 1 && (
         <>
-          {/* موبايل: Prev / المؤشر / Next */}
+          {/* Mobile */}
           <nav
             className="mt-8 flex items-center justify-between gap-3 md:hidden"
             role="navigation"
@@ -245,7 +264,10 @@ export default function ArticlesList({ catsParam, locale }: Props) {
               ‹ {t.prev}
             </button>
 
-            <span className={`${activeBtn} h-11 min-w-[44px] px-5 text-sm`} aria-current="page">
+            <span
+              className={`${activeBtn} h-11 min-w-[44px] px-5 text-sm`}
+              aria-current="page"
+            >
               {page} / {totalPages}
             </span>
 
@@ -259,7 +281,7 @@ export default function ArticlesList({ catsParam, locale }: Props) {
             </button>
           </nav>
 
-          {/* شاشات md+ : أرقام + … + First/Last */}
+          {/* Desktop */}
           <nav
             className="mt-8 hidden md:flex items-center justify-center flex-wrap gap-2"
             role="navigation"
@@ -294,11 +316,15 @@ export default function ArticlesList({ catsParam, locale }: Props) {
                   onClick={() => changePage(p)}
                   aria-current={p === page ? 'page' : undefined}
                   aria-label={`${t.page} ${p}`}
-                  className={p === page ? `${activeBtn} h-10 px-4 text-sm` : `${ghostBtn} h-10 px-4 text-sm`}
+                  className={
+                    p === page
+                      ? `${activeBtn} h-10 px-4 text-sm`
+                      : `${ghostBtn} h-10 px-4 text-sm`
+                  }
                 >
                   {p}
                 </button>
-              )
+              ),
             )}
 
             <button

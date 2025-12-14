@@ -21,9 +21,6 @@ interface ArticleDocDb {
   categoryId?: string;
   coverUrl?: string;
   heroImageUrl?: string;
-  videoUrl?: string;
-  videoOnly?: boolean;
-  isVideoOnly?: boolean;
   status?: 'published';
   createdAt?: Date;
   updatedAt: Date;
@@ -31,7 +28,9 @@ interface ArticleDocDb {
   meta?: Record<string, unknown>;
 }
 
-interface ArticleDocApi extends Omit<ArticleDocDb, '_id'> { _id: string }
+interface ArticleDocApi extends Omit<ArticleDocDb, '_id'> {
+  _id: string;
+}
 
 type AdminSessionShape = { user?: { role?: string | null } | null } | null | undefined;
 
@@ -47,35 +46,33 @@ function responseError(msg: string, status = 400) {
   return NextResponse.json({ error: msg }, { status });
 }
 
-const urlSchema = z.string().trim().min(1).refine(
-  (v) => v.startsWith('http://') || v.startsWith('https://') || v.startsWith('/'),
-  { message: 'Invalid URL' },
-);
+const urlSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .refine((v) => v.startsWith('http://') || v.startsWith('https://') || v.startsWith('/'), {
+    message: 'Invalid URL',
+  });
 
 // body schema:
-const UpsertSchema = z.object({
-  title: z.string().trim().min(1),
-  excerpt: z.string().trim().optional(),
-  content: z.string().trim().optional(),
-  categoryId: z.string().trim().optional(),
-  coverUrl: urlSchema.optional(),
-  heroImageUrl: urlSchema.optional(),
-  videoUrl: urlSchema.optional(),
-  videoOnly: z.boolean().optional(),
-  isVideoOnly: z.boolean().optional(),
-  readingTime: z.union([z.number().int().nonnegative(), z.string().trim().min(1)]).optional(),
-  meta: z.record(z.string(), z.unknown()).optional(),
-  preserveSlug: z.boolean().optional(), // 👈 NEW
-}).superRefine((data, ctx) => {
-  const isVideo = (data.videoOnly ?? data.isVideoOnly) === true;
-  if (isVideo) {
-    if (!data.videoUrl) ctx.addIssue({ path: ['videoUrl'], code: z.ZodIssueCode.custom, message: 'videoUrl is required when videoOnly is true' });
-  } else {
+const UpsertSchema = z
+  .object({
+    title: z.string().trim().min(1),
+    excerpt: z.string().trim().optional(),
+    content: z.string().trim().optional(),
+    categoryId: z.string().trim().optional(),
+    coverUrl: urlSchema.optional(),
+    heroImageUrl: urlSchema.optional(),
+    readingTime: z.union([z.number().int().nonnegative(), z.string().trim().min(1)]).optional(),
+    meta: z.record(z.string(), z.unknown()).optional(),
+    preserveSlug: z.boolean().optional(), // 👈 NEW
+  })
+  .superRefine((data, ctx) => {
     const c = (data.content ?? '').replace(/<[^>]+>/g, '').trim();
-    if (!c) ctx.addIssue({ path: ['content'], code: z.ZodIssueCode.custom, message: 'content is required when videoOnly is false' });
-    if (!data.categoryId) ctx.addIssue({ path: ['categoryId'], code: z.ZodIssueCode.custom, message: 'categoryId is required when videoOnly is false' });
-  }
-});
+    if (!c) ctx.addIssue({ path: ['content'], code: z.ZodIssueCode.custom, message: 'content is required' });
+    if (!data.categoryId)
+      ctx.addIssue({ path: ['categoryId'], code: z.ZodIssueCode.custom, message: 'categoryId is required' });
+  });
 
 function computeReadingTimeFromHtml(html?: string) {
   if (!html) return undefined;
@@ -114,7 +111,10 @@ async function ensureUniqueSlugForEdit(
   let candidate = clean;
   let i = 2;
   while (i < 2000) {
-    const exists = await coll.findOne({ slug: candidate, _id: { $ne: selfId } }, { projection: { _id: 1 } });
+    const exists = await coll.findOne(
+      { slug: candidate, _id: { $ne: selfId } },
+      { projection: { _id: 1 } },
+    );
     if (!exists) return candidate;
     candidate = `${clean}-${i++}`;
   }
@@ -137,8 +137,7 @@ async function ensureUniqueSlugForCreate(
 }
 
 function toApi(doc: WithId<ArticleDocDb>): ArticleDocApi {
-  const flag = doc.videoOnly ?? doc.isVideoOnly ?? false;
-  return { ...doc, videoOnly: flag, isVideoOnly: flag, _id: doc._id.toString() };
+  return { ...doc, _id: doc._id.toString() };
 }
 
 /* ---------------------------------- GET --------------------------------- */
@@ -170,18 +169,23 @@ export async function PUT(req: NextRequest, ctx: Ctx) {
   try {
     body = UpsertSchema.parse(await req.json());
   } catch (e) {
-    return responseError(e instanceof ZodError ? e.issues.map(i => i.message).join(' | ') : 'Invalid body', 400);
+    return responseError(
+      e instanceof ZodError ? e.issues.map((i) => i.message).join(' | ') : 'Invalid body',
+      400,
+    );
   }
 
   try {
     const db = (await clientPromise).db();
     const coll = db.collection<ArticleDocDb>('articles');
 
-    const current = await coll.findOne({ slug: currentSlug }, { projection: { _id: 1, slug: 1 } });
+    const current = await coll.findOne(
+      { slug: currentSlug },
+      { projection: { _id: 1, slug: 1 } },
+    );
 
-    const isVideo = (body.videoOnly ?? body.isVideoOnly) === true;
     let readingTime = toPlainStringReadingTime(body.readingTime);
-    if (!isVideo && !readingTime && body.content) {
+    if (!readingTime && body.content) {
       readingTime = computeReadingTimeFromHtml(body.content);
     }
     const cover = body.coverUrl ?? body.heroImageUrl;
@@ -195,15 +199,6 @@ export async function PUT(req: NextRequest, ctx: Ctx) {
         finalSlug = await ensureUniqueSlugForEdit(desiredBase, current._id, coll);
       }
 
-      const unset: Record<string, ''> = {};
-      if (isVideo) {
-        if (!body.categoryId || body.categoryId === '') unset.categoryId = '';
-        if (!body.content || body.content.trim() === '') {
-          unset.content = '';
-          unset.readingTime = '';
-        }
-      }
-
       const setRaw: Partial<ArticleDocDb> = {
         slug: finalSlug,
         title: body.title,
@@ -212,27 +207,30 @@ export async function PUT(req: NextRequest, ctx: Ctx) {
         categoryId: body.categoryId && body.categoryId !== '' ? body.categoryId : undefined,
         coverUrl: cover,
         heroImageUrl: cover,
-        videoUrl: body.videoUrl,
-        videoOnly: isVideo,
-        isVideoOnly: isVideo,
         readingTime,
         meta: body.meta as Record<string, unknown> | undefined,
         status: 'published',
         updatedAt: new Date(),
       };
+
       const setClean = pruneUndefined(setRaw);
-      for (const k of Object.keys(unset)) delete (setClean as Record<string, unknown>)[k];
 
       const result = await coll.findOneAndUpdate(
         { _id: current._id },
-        { $set: setClean, ...(Object.keys(unset).length ? { $unset: unset } : {}) },
+        { $set: setClean },
         { returnDocument: 'after' },
       );
+
       const updated = result.value;
       if (!updated) return responseError('Not found', 404);
 
       return NextResponse.json(
-        { ok: true, article: toApi(updated), slugChanged: finalSlug !== current.slug, newSlug: finalSlug },
+        {
+          ok: true,
+          article: toApi(updated),
+          slugChanged: finalSlug !== current.slug,
+          newSlug: finalSlug,
+        },
         { status: 200 },
       );
     }
@@ -249,9 +247,6 @@ export async function PUT(req: NextRequest, ctx: Ctx) {
       categoryId: body.categoryId && body.categoryId !== '' ? body.categoryId : undefined,
       coverUrl: cover,
       heroImageUrl: cover,
-      videoUrl: body.videoUrl,
-      videoOnly: isVideo,
-      isVideoOnly: isVideo,
       readingTime,
       meta: body.meta as Record<string, unknown> | undefined,
       status: 'published',
@@ -265,7 +260,13 @@ export async function PUT(req: NextRequest, ctx: Ctx) {
     if (!inserted) return responseError('Insert failed', 500);
 
     return NextResponse.json(
-      { ok: true, article: toApi(inserted), slugChanged: finalSlug !== currentSlug, newSlug: finalSlug, created: true },
+      {
+        ok: true,
+        article: toApi(inserted),
+        slugChanged: finalSlug !== currentSlug,
+        newSlug: finalSlug,
+        created: true,
+      },
       { status: 201 },
     );
   } catch (e) {

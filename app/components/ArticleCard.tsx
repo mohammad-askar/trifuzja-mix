@@ -20,7 +20,6 @@ interface Article {
   coverUrl?: string;
   readingTime?: string;
   meta?: ArticleMeta;
-  isVideoOnly?: boolean; // ✅ لإظهار شارة الفيديو عند الحاجة
 }
 
 interface Props {
@@ -44,8 +43,8 @@ const pickText = (
 const PLACEHOLDER = '/images/placeholder.png';
 function normalizeImageSrc(src?: string): string {
   if (!src || src.length < 5) return PLACEHOLDER;
-  if (/^https?:\/\//i.test(src)) return src;           // absolute http/https
-  return src.startsWith('/') ? src : `/${src}`;        // relative -> absolute path
+  if (/^https?:\/\//i.test(src)) return src; // absolute http/https
+  return src.startsWith('/') ? src : `/${src}`; // relative -> absolute path
 }
 
 /* object-position من coverPosition */
@@ -61,7 +60,7 @@ function resolveObjectPosition(pos?: CoverPos): string {
 }
 
 export default function ArticleCard({ article, locale, priority = false }: Props) {
-  const title   = pickText(article.title, locale);
+  const title = pickText(article.title, locale);
   const excerpt = pickText(article.excerpt, locale);
 
   const initialSrc = normalizeImageSrc(article.coverUrl);
@@ -101,17 +100,6 @@ export default function ArticleCard({ article, locale, priority = false }: Props
         <h3 className="absolute bottom-3 left-4 right-4 text-base sm:text-lg font-semibold text-white leading-snug line-clamp-2 drop-shadow">
           {title || '—'}
         </h3>
-
-        {/* ✅ شارة الفيديو الحمراء — فقط إن كان Video-only */}
-        {article.isVideoOnly && (
-          <span
-            className="absolute left-2 top-2 rounded-full bg-rose-500 px-2 py-0.5 text-[10px] font-semibold text-white shadow ring-1 ring-white/15"
-            aria-label={locale === 'pl' ? 'Wideo' : 'Video'}
-          >
-            {locale === 'pl' ? 'Wideo' : 'Video'}
-          </span>
-        )}
-
       </div>
 
       {/* النص السفلي */}

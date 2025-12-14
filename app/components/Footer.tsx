@@ -32,7 +32,6 @@ const translations: Record<
     consentRequired: string;
     home: string;
     articles: string;
-    // videos: string; // ✅ جديد
   }
 > = {
   en: {
@@ -56,7 +55,6 @@ const translations: Record<
     consentRequired: "Please accept the consent to subscribe.",
     home: "Home",
     articles: "Articles",
-    // videos: "Videos", // ✅ جديد
   },
   pl: {
     copyright: "Wszystkie prawa zastrzeżone",
@@ -79,7 +77,6 @@ const translations: Record<
     consentRequired: "Aby się zapisać, zaznacz zgodę.",
     home: "Home",
     articles: "Artykuły",
-    // videos: "Wideo", // ✅ جديد
   },
 };
 
@@ -184,10 +181,6 @@ export function Footer({
           <Link href={`/${locale}/articles`} className="hover:text-blue-400">
             {t.articles}
           </Link>
-          {/* ✅ الرابط الجديد ليتطابق مع الهيدر */}
-          {/* <Link href={`/${locale}/videos`} className="hover:text-blue-400">
-            {t.videos}
-          </Link> */}
           <Link href={`/${locale}/about`} className="hover:text-blue-400">
             {t.about}
           </Link>

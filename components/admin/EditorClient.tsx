@@ -19,21 +19,11 @@ const TipTapEditor = dynamic(() => import('@/app/components/TipTapEditor'), {
 });
 
 /* ------------------------- Validation Schema ------------------------- */
-/** ملاحظة: حذفنا pageKey و published، وسمحنا بفيديو URL اختياري/فارغ */
+/** Note: removed videoUrl support */
 const schema = z.object({
   title: z.string().trim().min(3, 'Title too short'),
-  excerpt: z
-    .string()
-    .trim()
-    .min(10, 'Excerpt min 10')
-    .max(300, 'Max 300 chars'),
+  excerpt: z.string().trim().min(10, 'Excerpt min 10').max(300, 'Max 300 chars'),
   categoryId: z.string().trim().min(1, 'Select category'),
-  videoUrl: z
-    .string()
-    .trim()
-    .optional()
-    .transform((v) => (v === '' ? undefined : v))
-    .pipe(z.string().url('Invalid URL').optional()),
 });
 
 type FormData = z.infer<typeof schema>;
@@ -132,9 +122,8 @@ export default function EditorClient({ locale }: { locale: Locale }) {
 
   /* ------------------------------ Submit ------------------------------ */
   /**
-   * ✅ نرسل title/excerpt/content كـ Record {en,pl} بنفس القيمة
-   * علشان الـ API الحالية (POST /api/articles) تتقبّلها،
-   * وكمان المقالات القديمة تبقى متوافقة.
+   * We send title/excerpt/content as Record {en,pl} with the same value
+   * for compatibility with the current API.
    */
   const onSubmit: SubmitHandler<FormData> = async (d) => {
     if (uploading) {
@@ -146,9 +135,9 @@ export default function EditorClient({ locale }: { locale: Locale }) {
       return;
     }
 
-    const titleRec = { en: d.title.trim(), pl: d.title.trim() };
-    const excerptRec = { en: d.excerpt.trim(), pl: d.excerpt.trim() };
-    const contentRec = { en: content, pl: content };
+    const titleRec: Record<Locale, string> = { en: d.title.trim(), pl: d.title.trim() };
+    const excerptRec: Record<Locale, string> = { en: d.excerpt.trim(), pl: d.excerpt.trim() };
+    const contentRec: Record<Locale, string> = { en: content, pl: content };
 
     const payload = {
       slug: slugify(d.title, { lower: true, strict: true }),
@@ -157,8 +146,7 @@ export default function EditorClient({ locale }: { locale: Locale }) {
       content: contentRec,
       categoryId: d.categoryId,
       coverUrl: coverUrl || undefined,
-      videoUrl: d.videoUrl,
-      // meta: يمكن تضيف coverPosition لاحقًا لو احتجته
+      // meta: add coverPosition later if needed
     };
 
     try {
@@ -172,7 +160,6 @@ export default function EditorClient({ locale }: { locale: Locale }) {
       if (!res.ok) throw new Error(errJson.error || 'Server error');
 
       toast.success(locale === 'pl' ? '✅ Zapisano!' : '✅ Saved');
-      // ارجع لقائمة المقالات مع الـ locale
       router.push(`/${locale}/admin/articles`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Network error');
@@ -182,7 +169,7 @@ export default function EditorClient({ locale }: { locale: Locale }) {
   /* --------------------------------- UI -------------------------------- */
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-      {/* العنوان */}
+      {/* Title */}
       <input
         {...register('title')}
         placeholder={locale === 'pl' ? 'Tytuł' : 'Title'}
@@ -190,7 +177,7 @@ export default function EditorClient({ locale }: { locale: Locale }) {
       />
       {errors.title && <p className="text-red-500 text-sm">{errors.title.message}</p>}
 
-      {/* المقتطف */}
+      {/* Excerpt */}
       <textarea
         {...register('excerpt')}
         rows={3}
@@ -199,10 +186,10 @@ export default function EditorClient({ locale }: { locale: Locale }) {
       />
       {errors.excerpt && <p className="text-red-500 text-sm">{errors.excerpt.message}</p>}
 
-      {/* المحرر */}
+      {/* Editor */}
       <TipTapEditor content={content} setContent={setContent} />
 
-      {/* رفع الغلاف */}
+      {/* Cover upload */}
       <div
         {...getRootProps()}
         className={`border-2 border-dashed p-4 rounded text-center cursor-pointer transition ${
@@ -238,7 +225,7 @@ export default function EditorClient({ locale }: { locale: Locale }) {
         </div>
       )}
 
-      {/* الفئة */}
+      {/* Category */}
       <div className="grid md:grid-cols-1 gap-4">
         <select
           {...register('categoryId')}
@@ -261,15 +248,7 @@ export default function EditorClient({ locale }: { locale: Locale }) {
         </select>
       </div>
 
-      {/* رابط الفيديو (اختياري) */}
-      <input
-        {...register('videoUrl')}
-        placeholder={locale === 'pl' ? 'Adres wideo (opc.)' : 'Video URL (opt.)'}
-        className="w-full border rounded px-3 py-2 focus:ring focus:ring-blue-200 outline-none"
-      />
-      {errors.videoUrl && <p className="text-red-500 text-sm">{errors.videoUrl.message}</p>}
-
-      {/* زر الحفظ */}
+      {/* Save button */}
       <button
         type="submit"
         disabled={isSubmitting || uploading}

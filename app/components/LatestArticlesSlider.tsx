@@ -9,7 +9,6 @@ import { Pagination, Autoplay } from 'swiper/modules';
 import type { Swiper as SwiperInstance } from 'swiper/types';
 import 'swiper/css';
 import 'swiper/css/pagination';
-import { getYouTubeThumb } from '@/utils/youtube';
 
 type Locale = 'en' | 'pl';
 type LegacyCoverPos = 'top' | 'center' | 'bottom';
@@ -21,18 +20,23 @@ interface ArticleMini {
   title: string;
   excerpt?: string;
   coverUrl?: string;
-  videoUrl?: string;
   meta?: { coverPosition?: LegacyCoverPos | CoverPosition };
-  isVideoOnly?: boolean;
 }
 
 const PLACEHOLDER = '/images/placeholder.png';
 const normalizeSrc = (src?: string) =>
-  !src || src.length < 5 ? PLACEHOLDER : /^https?:\/\//i.test(src) ? src : (src.startsWith('/') ? src : `/${src}`);
+  !src || src.length < 5
+    ? PLACEHOLDER
+    : /^https?:\/\//i.test(src)
+    ? src
+    : src.startsWith('/')
+    ? src
+    : `/${src}`;
 
 const toObjectPosition = (pos?: LegacyCoverPos | CoverPosition) => {
   if (!pos) return '50% 50%';
-  if (typeof pos === 'string') return pos === 'top' ? '50% 0%' : pos === 'bottom' ? '50% 100%' : '50% 50%';
+  if (typeof pos === 'string')
+    return pos === 'top' ? '50% 0%' : pos === 'bottom' ? '50% 100%' : '50% 50%';
   const x = Math.max(0, Math.min(100, pos.x));
   const y = Math.max(0, Math.min(100, pos.y));
   return `${x}% ${y}%`;
@@ -86,7 +90,7 @@ export default function LatestArticlesSlider({
         // Consider it visible as soon as it peeks into viewport a bit
         root: null,
         threshold: 0.01,
-      }
+      },
     );
 
     obs.observe(el);
@@ -134,8 +138,6 @@ export default function LatestArticlesSlider({
         grabCursor={articles.length > 1}
         onSwiper={(s) => {
           swiperRef.current = s;
-          // Let autoplay be managed by IntersectionObserver & visibility
-          // (don’t call stop() here)
         }}
         breakpoints={{
           640: { slidesPerView: 1.2 },
@@ -144,8 +146,7 @@ export default function LatestArticlesSlider({
         }}
       >
         {articles.map((a, idx) => {
-          const ytThumb = a.videoUrl ? getYouTubeThumb(a.videoUrl) : null;
-          const img = ytThumb ?? normalizeSrc(a.coverUrl);
+          const img = normalizeSrc(a.coverUrl);
           const objectPosition = toObjectPosition(a.meta?.coverPosition);
 
           return (
@@ -166,17 +167,16 @@ export default function LatestArticlesSlider({
                       className="object-cover group-hover:scale-105 transition-transform duration-300"
                       style={{ objectPosition }}
                     />
-                    {(a.isVideoOnly || a.videoUrl) && (
-                      <span className="absolute left-2 top-2 rounded-full bg-rose-500 px-2 py-0.5 text-[10px] font-semibold text-white shadow ring-1 ring-white/15">
-                        {locale === 'pl' ? 'Wideo' : 'Video'}
-                      </span>
-                    )}
                     <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
                   </div>
 
                   <div className="flex-1 p-4 space-y-2 min-h-[112px]">
-                    <h3 className="text-lg font-semibold text-white line-clamp-2">{a.title}</h3>
-                    {a.excerpt && <p className="text-gray-300 text-sm line-clamp-2">{a.excerpt}</p>}
+                    <h3 className="text-lg font-semibold text-white line-clamp-2">
+                      {a.title}
+                    </h3>
+                    {a.excerpt && (
+                      <p className="text-gray-300 text-sm line-clamp-2">{a.excerpt}</p>
+                    )}
                   </div>
                 </article>
               </Link>

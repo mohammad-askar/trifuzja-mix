@@ -21,8 +21,6 @@ interface ApiArticle {
   title: string;
   excerpt?: string;
   coverUrl?: string;
-  videoUrl?: string;
-  isVideoOnly?: boolean; // ← if your API sends it, we use it
   createdAt?: string;
   meta?: { coverPosition?: LegacyCoverPos | CoverPosition };
 }
@@ -41,9 +39,7 @@ interface LocaleTexts {
   heroSubtitle: string;
   cta: string;
   latestArticles: string;
-  latestVideos: string;
   emptyArticles: string;
-  emptyVideos: string;
   error: string;
   retry: string;
   viewAll: string;
@@ -56,9 +52,7 @@ const TEXTS: Record<Locale, LocaleTexts> = {
       'An independent publishing initiative outside the traditional editorial structure — creativity, openness and integrity.',
     cta: 'Start Reading',
     latestArticles: 'Latest Articles',
-    latestVideos: 'Latest Videos',
     emptyArticles: 'No articles yet.',
-    emptyVideos: 'No videos yet.',
     error: 'Failed to load content.',
     retry: 'Retry',
     viewAll: 'View all »',
@@ -69,9 +63,7 @@ const TEXTS: Record<Locale, LocaleTexts> = {
       'Niezależna inicjatywa publikacyjna poza klasyczną strukturą redakcyjną — kreatywność, otwartość i rzetelność.',
     cta: 'Czytaj teraz',
     latestArticles: 'Najnowsze artykuły',
-    latestVideos: 'Najnowsze wideo',
     emptyArticles: 'Brak artykułów.',
-    emptyVideos: 'Brak wideo.',
     error: 'Nie udało się pobrać treści.',
     retry: 'Spróbuj ponownie',
     viewAll: 'Wszystkie »',
@@ -100,21 +92,8 @@ function toObjectPosition(pos?: LegacyCoverPos | CoverPosition): string {
   return `${x}% ${y}%`;
 }
 
-const FETCH_LIMIT = 12;       // fetch enough to have items for both sliders
+const FETCH_LIMIT = 12;
 const CARD_HEIGHT = 340;
-
-/* A small “play” corner badge for videos */
-function PlayBadge() {
-  return (
-    <span
-      className="absolute right-2 top-2 z-10 rounded-full bg-black/70 text-white text-[10px] px-2 py-1
-                 border border-white/10 shadow"
-      aria-hidden="true"
-    >
-      ▶︎ Video
-    </span>
-  );
-}
 
 export default function HomeClient() {
   const params = useParams();
@@ -163,27 +142,10 @@ export default function HomeClient() {
     return () => c.abort();
   }, [fetchAll]);
 
-  /* Split into Articles vs Videos.
-     Prefer explicit isVideoOnly, fallback to presence of videoUrl. */
-  const { articlesOnly, videosOnly } = useMemo(() => {
-    const vids: ApiArticle[] = [];
-    const arts: ApiArticle[] = [];
-    for (const it of items) {
-      const isVideo = it.isVideoOnly === true || (!!it.videoUrl && !it.excerpt && !it.coverUrl);
-      (isVideo ? vids : arts).push(it);
-    }
-    return {
-      articlesOnly: arts,
-      videosOnly: vids,
-    };
-  }, [items]);
+  const hasMulti = useMemo(() => items.length > 1, [items]);
 
-  const hasMultiArticles = articlesOnly.length > 1;
-  const hasMultiVideos = videosOnly.length > 1;
-
-  /* Card -> shared */
   const renderCard = useCallback(
-    (a: ApiArticle, kind: 'article' | 'video') => {
+    (a: ApiArticle) => {
       const objectPosition = toObjectPosition(a.meta?.coverPosition);
       const imgSrc = safeImage(a.coverUrl);
 
@@ -194,10 +156,9 @@ export default function HomeClient() {
             style={{ height: CARD_HEIGHT }}
           >
             <div className="relative w-full overflow-hidden aspect-video">
-              {kind === 'video' && <PlayBadge />}
               <Image
                 src={imgSrc}
-                alt={a.title || (kind === 'video' ? 'video' : 'article')}
+                alt={a.title || 'article'}
                 fill
                 sizes="(min-width: 1024px) 33vw, (min-width: 768px) 50vw, 100vw"
                 className="object-cover transition-transform duration-300 group-hover:scale-105"
@@ -211,7 +172,7 @@ export default function HomeClient() {
               <h3 className="text-lg font-semibold text-white line-clamp-2">
                 {a.title}
               </h3>
-              {a.excerpt && kind === 'article' && (
+              {a.excerpt && (
                 <p className="text-gray-300 text-sm line-clamp-2">
                   {a.excerpt}
                 </p>
@@ -244,7 +205,14 @@ export default function HomeClient() {
             className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-full font-semibold shadow-lg transition focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
           >
             <span>{t.cta}</span>
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-5 w-5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              aria-hidden="true"
+            >
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
             </svg>
           </Link>
@@ -289,7 +257,7 @@ export default function HomeClient() {
           <div>
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-2xl font-bold">{t.latestArticles}</h2>
-              {articlesOnly.length > 0 && (
+              {items.length > 0 && (
                 <Link
                   href={`/${locale}/articles`}
                   className="text-sm text-blue-400 hover:text-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded px-2 py-1"
@@ -299,7 +267,7 @@ export default function HomeClient() {
               )}
             </div>
 
-            {articlesOnly.length === 0 ? (
+            {items.length === 0 ? (
               <p className="text-gray-400">{t.emptyArticles}</p>
             ) : (
               <Swiper
@@ -307,45 +275,15 @@ export default function HomeClient() {
                 slidesPerView={1}
                 spaceBetween={20}
                 pagination={{ clickable: true }}
-                autoplay={hasMultiArticles ? { delay: 5000, disableOnInteraction: false } : false}
+                autoplay={hasMulti ? { delay: 5000, disableOnInteraction: false } : false}
                 breakpoints={{
                   640: { slidesPerView: 1.2 },
                   768: { slidesPerView: 2 },
                   1024: { slidesPerView: 3 },
                 }}
               >
-                {articlesOnly.map((a) => (
-                  <SwiperSlide key={a._id}>{renderCard(a, 'article')}</SwiperSlide>
-                ))}
-              </Swiper>
-            )}
-          </div>
-        )}
-
-        {/* Videos slider */}
-        {!loading && !error && (
-          <div>
-            <div className="mb-6 mt-8 flex items-center justify-between">
-              <h2 className="text-2xl font-bold">{t.latestVideos}</h2>
-            </div>
-
-            {videosOnly.length === 0 ? (
-              <p className="text-gray-400">{t.emptyVideos}</p>
-            ) : (
-              <Swiper
-                modules={[Pagination, Autoplay]}
-                slidesPerView={1}
-                spaceBetween={20}
-                pagination={{ clickable: true }}
-                autoplay={hasMultiVideos ? { delay: 5000, disableOnInteraction: false } : false}
-                breakpoints={{
-                  640: { slidesPerView: 1.2 },
-                  768: { slidesPerView: 2 },
-                  1024: { slidesPerView: 3 },
-                }}
-              >
-                {videosOnly.map((v) => (
-                  <SwiperSlide key={v._id}>{renderCard(v, 'video')}</SwiperSlide>
+                {items.map((a) => (
+                  <SwiperSlide key={a._id}>{renderCard(a)}</SwiperSlide>
                 ))}
               </Swiper>
             )}

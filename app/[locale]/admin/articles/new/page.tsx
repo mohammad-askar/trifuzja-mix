@@ -273,7 +273,6 @@ export default function NewArticlePage() {
                 content: { en: '', pl: '' },
                 categoryId: '',
                 coverUrl: undefined,
-                videoUrl: undefined,
                 meta: undefined,
               }}
               onSaved={(slug: string) =>

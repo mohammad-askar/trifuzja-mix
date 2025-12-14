@@ -1,11 +1,13 @@
+//E:\trifuzja-mix\components\admin\ArticleEditorWrapper.tsx
 'use client';
 
 import dynamic from 'next/dynamic';
+import { Loader2 } from 'lucide-react';
 
-/* لغات الواجهة فقط */
+/* UI locales only */
 type Locale = 'en' | 'pl';
 
-/* بيانات يستهلكها ArticleEditor بدون page/status */
+/* Data consumed by ArticleEditor (no page/status, no video) */
 type ArticleEditorData = {
   slug?: string;
   title?: Record<Locale, string>;
@@ -13,7 +15,6 @@ type ArticleEditorData = {
   content?: Record<Locale, string>;
   categoryId?: string;
   coverUrl?: string;
-  videoUrl?: string;
   meta?: Record<string, unknown>;
 };
 
@@ -24,22 +25,31 @@ export interface ArticleEditorWrapperProps {
   onSaved?: (slug: string) => void;
 }
 
-/* تحميل ديناميكي للمحرّر لمنع مشاكل SSR */
-const ArticleEditor = dynamic(
-  () => import('@/app/components/ArticleEditor'),
-  {
-    ssr: false,
-    loading: () => (
-      <p className="text-sm text-zinc-500">Loading editor…</p>
-    ),
-  },
-);
+function EditorLoader() {
+  return (
+    <div
+      className="flex items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-white/60 p-6
+                 text-zinc-600 shadow-sm dark:border-zinc-800 dark:bg-zinc-900/60 dark:text-zinc-300"
+      aria-busy="true"
+      aria-live="polite"
+    >
+      <Loader2 className="h-4 w-4 animate-spin" />
+      <span className="text-sm">Loading editor…</span>
+    </div>
+  );
+}
+
+/* Dynamic import to avoid SSR editor issues */
+const ArticleEditor = dynamic(() => import('@/app/components/ArticleEditor'), {
+  ssr: false,
+  loading: () => <EditorLoader />,
+});
 
 export default function ArticleEditorWrapper({
   mode,
   locale,
   defaultData,
-  onSaved = () => {},
+  onSaved,
 }: ArticleEditorWrapperProps) {
   return (
     <ArticleEditor
