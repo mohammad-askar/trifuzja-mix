@@ -1,14 +1,18 @@
-// middleware.ts
-import { NextRequest, NextResponse } from 'next/server';
-import { getToken, type JWT } from 'next-auth/jwt';
+// proxy.ts
+import { NextRequest, NextResponse } from "next/server";
+import { getToken, type JWT } from "next-auth/jwt";
 
-type AppJWT = JWT & { role?: 'admin' | 'editor' | 'user' };
+type AppJWT = JWT & { role?: "admin" | "editor" | "user" };
 
 function isAppJWT(token: JWT | null): token is AppJWT {
-  return !!token && (typeof (token as Record<string, unknown>).role === 'string' || !('role' in (token as object)));
+  return (
+    !!token &&
+    (typeof (token as Record<string, unknown>).role === "string" ||
+      !("role" in (token as object)))
+  );
 }
 
-const SUPPORTED_LOCALES = new Set(['en', 'pl']);
+const SUPPORTED_LOCALES = new Set(["en", "pl"]);
 
 function extractTopSegment(pathname: string): string | null {
   const m = pathname.match(/^\/([^/]+)/);
@@ -16,22 +20,30 @@ function extractTopSegment(pathname: string): string | null {
 }
 
 function isStaticOrSeoPath(pathname: string): boolean {
-  // allow SEO/static non-prefixed paths that don't have dots
-  if (pathname === '/' || pathname.startsWith('/sitemap')) return true;
-  if (pathname.startsWith('/.well-known')) return true;
-  if (pathname.startsWith('/images') || pathname.startsWith('/flags') || pathname.startsWith('/upload')) return true;
+  if (pathname === "/" || pathname.startsWith("/sitemap")) return true;
+  if (pathname.startsWith("/.well-known")) return true;
+  if (
+    pathname.startsWith("/images") ||
+    pathname.startsWith("/flags") ||
+    pathname.startsWith("/upload")
+  )
+    return true;
   if (/^\/google[a-z0-9]+\.html$/i.test(pathname)) return true;
-  if (pathname.startsWith('/api')) return true;
-  if (pathname.startsWith('/_next')) return true;
+  if (pathname.startsWith("/api")) return true;
+  if (pathname.startsWith("/_next")) return true;
   return false;
 }
 
 function isAdminPath(pathname: string): boolean {
-  if (pathname === '/admin') return true;
+  if (pathname === "/admin") return true;
   return /^\/(en|pl)\/admin(\/|$)/.test(pathname);
 }
 
-export async function middleware(req: NextRequest) {
+export const config = {
+  matcher: ["/((?!_next|api|.*\\..*).*)"],
+};
+
+export default async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   // let static/seo paths pass
@@ -52,8 +64,9 @@ export async function middleware(req: NextRequest) {
   if (isAdminPath(pathname)) {
     const raw = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
     const token: AppJWT | null = isAppJWT(raw) ? raw : null;
-    if (token?.role !== 'admin') {
-      const locale = extractTopSegment(pathname) ?? 'en';
+
+    if (token?.role !== "admin") {
+      const locale = extractTopSegment(pathname) ?? "en";
       const url = req.nextUrl.clone();
       url.pathname = `/${locale}/login`;
       return NextResponse.redirect(url, 307);
@@ -62,11 +75,3 @@ export async function middleware(req: NextRequest) {
 
   return NextResponse.next();
 }
-
-// IMPORTANT: exclude ANY path that contains a dot, so /ads.txt, /robots.txt, images, maps, etc never hit middleware.
-export const config = {
-  matcher: [
-    // run on everything EXCEPT: _next, api, and any path that includes a dot (".")
-    '/((?!_next|api|.*\\..*).*)',
-  ],
-};

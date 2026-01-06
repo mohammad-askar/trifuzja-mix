@@ -15,7 +15,7 @@
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "jsx": "preserve", // ← تمكين JSX في ملفات .tsx
+    "jsx": "react-jsx", // ← تمكين JSX في ملفات .tsx
     "incremental": true,
     "plugins": [
       {
@@ -53,7 +53,8 @@
     "scripts/**/*.mts",
     "types/**/*.d.ts",
     "types/**/*.ts",
-    ".next/types/**/*.ts"
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules"
