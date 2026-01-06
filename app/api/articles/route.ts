@@ -1,12 +1,11 @@
 // 📁 app/api/articles/route.ts
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
-import { NextRequest, NextResponse } from 'next/server';
-import { z, ZodError } from 'zod';
-import type { Filter } from 'mongodb';
-import clientPromise from '@/types/mongodb';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/authOptions';
+import { NextRequest, NextResponse } from "next/server";
+import { z, ZodError } from "zod";
+import type { Filter } from "mongodb";
+import clientPromise from "@/types/mongodb";
+import { auth } from "@/auth";
 
 /* ------------------------------------------------------------------ */
 /*                               Types                                */
@@ -18,7 +17,7 @@ interface CoverPos {
 }
 
 interface ArticleMeta {
-  coverPosition?: CoverPos | 'top' | 'center' | 'bottom';
+  coverPosition?: CoverPos | "top" | "center" | "bottom";
   [key: string]: unknown;
 }
 
@@ -31,7 +30,7 @@ export interface ArticleDoc {
   content?: string; // HTML
   categoryId?: string;
   coverUrl?: string;
-  status?: 'published';
+  status?: "published";
   createdAt: Date;
   updatedAt: Date;
   readingTime?: string;
@@ -42,29 +41,49 @@ export interface ArticleDoc {
 /*                              Helpers                               */
 /* ------------------------------------------------------------------ */
 
-const responseError = (msg: string, status = 400) =>
-  NextResponse.json({ error: msg }, { status });
+function responseError(msg: string, status = 400): NextResponse {
+  return NextResponse.json({ error: msg }, { status });
+}
 
 const relativeOrAbsoluteUrl = z
   .string()
   .refine(
-    (v) =>
-      !v ||
-      v.startsWith('http://') ||
-      v.startsWith('https://') ||
-      v.startsWith('/uploads/'),
-    'Invalid URL',
+    (v) => !v || v.startsWith("http://") || v.startsWith("https://") || v.startsWith("/uploads/"),
+    "Invalid URL",
   );
 
 /** Remove HTML tags then measure length */
 function plainTextLen(html?: string): number {
   if (!html) return 0;
-  return html.replace(/<[^>]+>/g, ' ').trim().replace(/\s+/g, ' ').length;
+  return html.replace(/<[^>]+>/g, " ").trim().replace(/\s+/g, " ").length;
 }
 
 /** Consider content empty if <= 20 chars after stripping tags */
 function isEffectivelyEmpty(html?: string): boolean {
   return plainTextLen(html) <= 20;
+}
+
+type Role = "admin" | "editor" | "user";
+
+function getUserRole(session: unknown): Role | undefined {
+  if (typeof session !== "object" || session === null) return undefined;
+
+  const s = session as { user?: unknown };
+  const user = s.user;
+  if (typeof user !== "object" || user === null) return undefined;
+
+  const u = user as { role?: unknown };
+  return typeof u.role === "string" ? (u.role as Role) : undefined;
+}
+
+async function requireAdminOrEditorOr403(): Promise<{ ok: true } | { ok: false; res: NextResponse }> {
+  const session = await auth();
+  const role = getUserRole(session);
+
+  if (!session?.user || (role !== "admin" && role !== "editor")) {
+    return { ok: false, res: responseError("Unauthorized", 403) };
+  }
+  return { ok: true };
 }
 
 /* ------------------------------------------------------------------ */
@@ -76,7 +95,7 @@ function isEffectivelyEmpty(html?: string): boolean {
  * - ?cat=catId  or ?cat=cat1,cat2  or repeated ?cat=...
  * - ?search=foo  (case-insensitive match on title or slug)
  */
-export async function GET(req: NextRequest) {
+export async function GET(req: NextRequest): Promise<NextResponse> {
   try {
     const SearchSchema = z.object({
       pageNo: z.coerce.number().int().min(1).default(1),
@@ -89,18 +108,17 @@ export async function GET(req: NextRequest) {
 
     // categories: allow multiples
     const catsArray = req.nextUrl.searchParams
-      .getAll('cat')
-      .flatMap((v) => v.split(',').map((s) => s.trim()).filter(Boolean));
+      .getAll("cat")
+      .flatMap((v) => v.split(",").map((s) => s.trim()).filter(Boolean));
 
     // search term
-    const searchRaw = (req.nextUrl.searchParams.get('search') ?? '').trim();
+    const searchRaw = (req.nextUrl.searchParams.get("search") ?? "").trim();
 
-    // escape user input for regex
-    const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const escapeRegExp = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
     // Only published (or legacy docs without status)
     const filter: Filter<ArticleDoc> = {
-      $or: [{ status: 'published' }, { status: { $exists: false } }],
+      $or: [{ status: "published" }, { status: { $exists: false } }],
     };
 
     // categories
@@ -112,16 +130,14 @@ export async function GET(req: NextRequest) {
 
     // apply search on title OR slug (case-insensitive)
     if (searchRaw.length > 0) {
-      const rx = new RegExp(escapeRegExp(searchRaw), 'i');
-      const and = (filter as Record<string, unknown>).$and as object[] | undefined;
-      (filter as Record<string, unknown>).$and = [
-        ...(and ?? []),
-        { $or: [{ title: rx }, { slug: rx }] },
-      ];
+      const rx = new RegExp(escapeRegExp(searchRaw), "i");
+
+      const f = filter as unknown as { $and?: Array<Record<string, unknown>> };
+      f.$and = [...(f.$and ?? []), { $or: [{ title: rx }, { slug: rx }] }];
     }
 
     const db = (await clientPromise).db();
-    const coll = db.collection<ArticleDoc>('articles');
+    const coll = db.collection<ArticleDoc>("articles");
 
     const skip = (qp.pageNo - 1) * qp.limit;
 
@@ -137,7 +153,7 @@ export async function GET(req: NextRequest) {
           createdAt: 1,
           updatedAt: 1,
           readingTime: 1,
-          'meta.coverPosition': 1,
+          "meta.coverPosition": 1,
         },
       })
       .sort({ createdAt: -1 })
@@ -151,7 +167,7 @@ export async function GET(req: NextRequest) {
       _id: d._id?.toString(),
       slug: d.slug,
       title: d.title,
-      excerpt: d.excerpt ?? '',
+      excerpt: d.excerpt ?? "",
       categoryId: d.categoryId,
       coverUrl: d.coverUrl,
       status: d.status,
@@ -168,14 +184,15 @@ export async function GET(req: NextRequest) {
       limit: qp.limit,
       pages: Math.ceil(total / qp.limit),
     });
-    res.headers.set('Cache-Control', 's-maxage=60, stale-while-revalidate=30');
+
+    res.headers.set("Cache-Control", "s-maxage=60, stale-while-revalidate=30");
     return res;
-  } catch (err) {
+  } catch (err: unknown) {
     if (err instanceof ZodError) {
-      return responseError(err.issues.map((i) => i.message).join(' | '));
+      return responseError(err.issues.map((i) => i.message).join(" | "));
     }
-    console.error('GET /api/articles', err);
-    return responseError('Server error', 500);
+    console.error("GET /api/articles", err);
+    return responseError("Server error", 500);
   }
 }
 
@@ -193,43 +210,37 @@ const ArticleSchema = z.object({
   meta: z
     .object({
       coverPosition: z
-        .union([
-          z.object({ x: z.number(), y: z.number() }),
-          z.enum(['top', 'center', 'bottom']),
-        ])
+        .union([z.object({ x: z.number(), y: z.number() }), z.enum(["top", "center", "bottom"])])
         .optional(),
     })
     .passthrough()
     .optional(),
 });
 
-export async function POST(req: NextRequest) {
+export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
-    const session = await getServerSession(authOptions);
-    const role = session?.user?.role;
-    if (!session || (role !== 'admin' && role !== 'editor')) {
-      return responseError('Unauthorized', 403);
-    }
+    const guard = await requireAdminOrEditorOr403();
+    if (!guard.ok) return guard.res;
 
     const parsed = ArticleSchema.parse(await req.json());
 
     // require meaningful content
     if (isEffectivelyEmpty(parsed.content)) {
-      return responseError('Content is required', 400);
+      return responseError("Content is required", 400);
     }
 
     const db = (await clientPromise).db();
-    const coll = db.collection<ArticleDoc>('articles');
+    const coll = db.collection<ArticleDoc>("articles");
 
     // slug must be unique
-    const dup = await coll.findOne({ slug: parsed.slug });
-    if (dup) return responseError('Slug already exists', 409);
+    const dup = await coll.findOne({ slug: parsed.slug }, { projection: { _id: 1 } });
+    if (dup) return responseError("Slug already exists", 409);
 
     const now = new Date();
 
     // compute reading time
-    const html = parsed.content ?? '';
-    const words = html.replace(/<[^>]+>/g, ' ').trim().split(/\s+/).filter(Boolean).length;
+    const html = parsed.content ?? "";
+    const words = html.replace(/<[^>]+>/g, " ").trim().split(/\s+/).filter(Boolean).length;
     const minutes = Math.max(1, Math.ceil(words / 200));
     const readingTime = `${minutes} min read`;
 
@@ -241,7 +252,7 @@ export async function POST(req: NextRequest) {
       categoryId: parsed.categoryId,
       coverUrl: parsed.coverUrl,
       meta: parsed.meta,
-      status: 'published',
+      status: "published",
       createdAt: now,
       updatedAt: now,
       readingTime,
@@ -250,11 +261,11 @@ export async function POST(req: NextRequest) {
     await coll.insertOne(doc);
 
     return NextResponse.json({ slug: parsed.slug }, { status: 201 });
-  } catch (err) {
+  } catch (err: unknown) {
     if (err instanceof ZodError) {
-      return responseError(err.issues.map((i) => i.message).join(' | '));
+      return responseError(err.issues.map((i) => i.message).join(" | "));
     }
-    console.error('POST /api/articles', err);
-    return responseError('Server error', 500);
+    console.error("POST /api/articles", err);
+    return responseError("Server error", 500);
   }
 }

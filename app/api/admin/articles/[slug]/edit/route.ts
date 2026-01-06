@@ -1,12 +1,11 @@
-//E:\trifuzja-mix\app\api\admin\articles\[slug]\edit\route.ts
-export const dynamic = 'force-dynamic';
+// E:\trifuzja-mix\app\api\admin\articles\[slug]\edit\route.ts
+export const dynamic = "force-dynamic";
 
-import { NextRequest, NextResponse } from 'next/server';
-import clientPromise from '@/types/mongodb';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/authOptions';
-import { z } from 'zod';
-import type { ObjectId, Collection } from 'mongodb';
+import { NextRequest, NextResponse } from "next/server";
+import clientPromise from "@/types/mongodb";
+import { auth } from "@/auth";
+import { z } from "zod";
+import type { ObjectId, Collection } from "mongodb";
 
 /* -------------------------------- Types -------------------------------- */
 
@@ -21,14 +20,14 @@ interface ArticleDocDb {
   categoryId?: string;
   coverUrl?: string;
   heroImageUrl?: string;
-  status?: 'published';
+  status?: "published";
   createdAt?: Date;
   updatedAt: Date;
   readingTime?: string;
   meta?: Record<string, unknown>;
 }
 
-interface ArticleDocApi extends Omit<ArticleDocDb, '_id'> {
+interface ArticleDocApi extends Omit<ArticleDocDb, "_id"> {
   _id: string;
 }
 
@@ -37,7 +36,7 @@ interface ArticleDocApi extends Omit<ArticleDocDb, '_id'> {
 const urlOrAppPath = z
   .string()
   .min(1)
-  .refine((val) => /^https?:\/\//.test(val) || val.startsWith('/'), {
+  .refine((val) => /^https?:\/\//.test(val) || val.startsWith("/"), {
     message: 'Must be an absolute URL or a path starting with "/"',
   });
 
@@ -51,13 +50,13 @@ const BodySchema = z
     heroImageUrl: urlOrAppPath.optional(),
     readingTime: z.union([z.number().int().nonnegative(), z.string().trim().min(1)]).optional(),
     meta: z.record(z.string(), z.unknown()).optional(),
-    preserveSlug: z.boolean().optional(), // 👈 NEW
+    preserveSlug: z.boolean().optional(),
   })
   .superRefine((data, ctx) => {
-    const c = (data.content ?? '').replace(/<[^>]+>/g, '').trim();
-    if (!c) ctx.addIssue({ path: ['content'], code: z.ZodIssueCode.custom, message: 'content is required' });
-    if (!data.categoryId || data.categoryId.trim() === '') {
-      ctx.addIssue({ path: ['categoryId'], code: z.ZodIssueCode.custom, message: 'categoryId is required' });
+    const c = (data.content ?? "").replace(/<[^>]+>/g, "").trim();
+    if (!c) ctx.addIssue({ path: ["content"], code: z.ZodIssueCode.custom, message: "content is required" });
+    if (!data.categoryId || data.categoryId.trim() === "") {
+      ctx.addIssue({ path: ["categoryId"], code: z.ZodIssueCode.custom, message: "categoryId is required" });
     }
   });
 
@@ -65,48 +64,55 @@ type Body = z.infer<typeof BodySchema>;
 
 /* -------------------------------- Helpers ------------------------------ */
 
-type AdminSessionShape =
-  | { user?: { role?: string | null } | null }
-  | null
-  | undefined;
+type Role = "admin" | "user";
+type AuthUser = { role?: Role | string | null } | null | undefined;
+type AuthSession = { user?: AuthUser } | null;
 
-function isObject(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null;
+function hasAdminRole(session: AuthSession): boolean {
+  const user = session?.user;
+  if (!user) return false;
+
+  if (typeof user === "object" && "role" in user) {
+    const role = (user as { role?: unknown }).role;
+    return role === "admin";
+  }
+  return false;
 }
 
-function requireAdmin(session: unknown): session is AdminSessionShape & { user: { role: string } } {
-  if (!isObject(session)) return false;
-  const user = (session as Record<string, unknown>).user;
-  if (!isObject(user)) return false;
-  return (user as Record<string, unknown>).role === 'admin';
+async function requireAdminOr401(): Promise<{ ok: true } | { ok: false; res: NextResponse }> {
+  const session = await auth();
+  if (!hasAdminRole(session)) {
+    return { ok: false, res: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
+  }
+  return { ok: true };
 }
 
-function responseError(msg: string, status = 400) {
+function responseError(msg: string, status = 400): NextResponse {
   return NextResponse.json({ error: msg }, { status });
 }
 
-function toPlainStringReadingTime(rt?: Body['readingTime']): string | undefined {
+function toPlainStringReadingTime(rt?: Body["readingTime"]): string | undefined {
   if (rt === undefined) return undefined;
-  return typeof rt === 'number' ? String(rt) : rt;
+  return typeof rt === "number" ? String(rt) : rt;
 }
 
-function computeReadingTimeFromHtml(html?: string) {
+function computeReadingTimeFromHtml(html?: string): string | undefined {
   if (!html) return undefined;
-  const words = html.replace(/<[^>]+>/g, ' ').trim().split(/\s+/).filter(Boolean).length;
+  const words = html.replace(/<[^>]+>/g, " ").trim().split(/\s+/).filter(Boolean).length;
   const minutes = Math.max(1, Math.ceil(words / 200));
   return `${minutes} min read`;
 }
 
 function makeSlug(input: string): string {
   return input
-    .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/[^a-z0-9\s-]/g, "")
     .trim()
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-+|-+$/g, '')
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "")
     .slice(0, 120);
 }
 
@@ -115,80 +121,78 @@ async function ensureUniqueSlug(
   selfId: ObjectId,
   coll: Collection<ArticleDocDb>,
 ): Promise<string> {
-  const clean = base || 'post';
+  const clean = base || "post";
   let candidate = clean;
   let i = 2;
+
   while (i < 2000) {
-    const exists = await coll.findOne(
-      { slug: candidate, _id: { $ne: selfId } },
-      { projection: { _id: 1 } },
-    );
+    const exists = await coll.findOne({ slug: candidate, _id: { $ne: selfId } }, { projection: { _id: 1 } });
     if (!exists) return candidate;
     candidate = `${clean}-${i++}`;
   }
-  throw new Error('Slug collision loop');
+  throw new Error("Slug collision loop");
 }
 
 /* --------------------------------- GET --------------------------------- */
 
-export async function GET(_req: NextRequest, ctx: Ctx) {
-  const { slug } = await ctx.params;
+export async function GET(_req: NextRequest, ctx: Ctx): Promise<NextResponse> {
+  const guard = await requireAdminOr401();
+  if (!guard.ok) return guard.res;
 
-  const session = await getServerSession(authOptions);
-  if (!requireAdmin(session)) return responseError('Unauthorized', 401);
-  if (!slug) return responseError('Slug missing', 400);
+  const { slug } = await ctx.params;
+  if (!slug) return responseError("Slug missing", 400);
 
   try {
     const db = (await clientPromise).db();
-    const article = await db.collection<ArticleDocDb>('articles').findOne({ slug });
+    const article = await db.collection<ArticleDocDb>("articles").findOne({ slug });
 
-    if (!article) return responseError('Article not found', 404);
+    if (!article) return responseError("Article not found", 404);
 
     const out: ArticleDocApi = { ...article, _id: article._id.toString() };
     return NextResponse.json(out, { status: 200 });
-  } catch (error) {
-    console.error('Failed to fetch article:', error);
-    return responseError('Internal Server Error', 500);
+  } catch (error: unknown) {
+    console.error("Failed to fetch article:", error);
+    return responseError("Internal Server Error", 500);
   }
 }
 
 /* --------------------------------- PUT --------------------------------- */
 
-export async function PUT(req: NextRequest, ctx: Ctx) {
-  const { slug } = await ctx.params;
+export async function PUT(req: NextRequest, ctx: Ctx): Promise<NextResponse> {
+  const guard = await requireAdminOr401();
+  if (!guard.ok) return guard.res;
 
-  const session = await getServerSession(authOptions);
-  if (!requireAdmin(session)) return responseError('Unauthorized', 401);
-  if (!slug) return responseError('Slug missing', 400);
+  const { slug } = await ctx.params;
+  if (!slug) return responseError("Slug missing", 400);
 
   let data: Body;
   try {
     data = BodySchema.parse(await req.json());
-  } catch (e) {
+  } catch (e: unknown) {
     return NextResponse.json(
-      { error: 'Invalid JSON or body', details: e instanceof z.ZodError ? e.flatten() : undefined },
+      { error: "Invalid JSON or body", details: e instanceof z.ZodError ? e.flatten() : undefined },
       { status: 400 },
     );
   }
 
   try {
     const db = (await clientPromise).db();
-    const articles = db.collection<ArticleDocDb>('articles');
+    const articles = db.collection<ArticleDocDb>("articles");
 
     const current = await articles.findOne({ slug }, { projection: { _id: 1, slug: 1 } });
-    if (!current) return responseError('Article not found', 404);
+    if (!current) return responseError("Article not found", 404);
 
     const unifiedCover = data.coverUrl ?? data.heroImageUrl;
 
     const set: Partial<ArticleDocDb> = {
       title: data.title,
       updatedAt: new Date(),
-      status: 'published',
+      status: "published",
     };
 
     if (data.excerpt !== undefined) set.excerpt = data.excerpt || undefined;
     if (data.content !== undefined) set.content = data.content || undefined;
-    if (data.meta !== undefined) set.meta = data.meta as Record<string, unknown>;
+    if (data.meta !== undefined) set.meta = data.meta;
 
     const rt = toPlainStringReadingTime(data.readingTime);
     if (rt !== undefined) set.readingTime = rt;
@@ -199,7 +203,7 @@ export async function PUT(req: NextRequest, ctx: Ctx) {
 
     if (data.categoryId !== undefined) {
       const cat = data.categoryId.trim();
-      set.categoryId = cat === '' ? undefined : cat;
+      set.categoryId = cat === "" ? undefined : cat;
     }
 
     if (unifiedCover !== undefined) {
@@ -209,34 +213,33 @@ export async function PUT(req: NextRequest, ctx: Ctx) {
 
     const desiredBase = makeSlug(data.title);
     const preserve = data.preserveSlug === true;
+
     let finalSlug = slug;
     if (!preserve && desiredBase && desiredBase !== slug) {
       finalSlug = await ensureUniqueSlug(desiredBase, current._id, articles);
       set.slug = finalSlug;
     }
 
-    const updateResult = await articles.findOneAndUpdate(
-      { _id: current._id },
-      { $set: set },
-      { returnDocument: 'after' },
-    );
+    // ✅ بدل findOneAndUpdate (الذي قد يرجّع null) استخدم updateOne ثم findOne
+    const updateRes = await articles.updateOne({ _id: current._id }, { $set: set });
+    if (updateRes.matchedCount === 0) return responseError("Article not found", 404);
 
-    const updated = updateResult.value;
-    if (!updated) return responseError('Article not found', 404);
+    const updated = await articles.findOne({ _id: current._id });
+    if (!updated) return responseError("Article not found", 404);
 
     const out: ArticleDocApi = { ...updated, _id: updated._id.toString() };
 
     return NextResponse.json(
       {
-        message: 'Article updated successfully',
+        message: "Article updated successfully",
         article: out,
         slugChanged: finalSlug !== slug,
         newSlug: finalSlug,
       },
       { status: 200 },
     );
-  } catch (error) {
-    console.error('Failed to update article:', error);
-    return responseError('Failed to update article', 500);
+  } catch (error: unknown) {
+    console.error("Failed to update article:", error);
+    return responseError("Failed to update article", 500);
   }
 }

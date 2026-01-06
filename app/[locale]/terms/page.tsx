@@ -1,25 +1,22 @@
 // app/[locale]/terms/page.tsx
-import type { Metadata } from 'next';
+import type { Metadata } from "next";
 
-export const dynamic = 'force-static';
+export const dynamic = "force-static";
 
-type Locale = 'en' | 'pl';
-const LOCALES: Locale[] = ['en', 'pl'];
+type Locale = "en" | "pl";
+const LOCALES: Locale[] = ["en", "pl"];
 
-// اسم الموقع كمصدر وحيد للحقيقة
-const SITE_NAME = 'MENSITIVA';
+const SITE_NAME = "MENSITIVA";
 
-// بيانات المزوّد/الكيان (منسّقة بدون any)
 const PROVIDER = {
-  legalName: 'Patrycja Konkowska',
+  legalName: "Patrycja Konkowska",
   brandName: SITE_NAME,
-  street: 'ul. Darzyborska 15B/7',
-  city: 'Poznań',
-  postalCode: '61-303',
-  email: 'mensitiva1@gmail.com', // ← حدّثه ببريدك الرسمي عند توفره
+  street: "ul. Darzyborska 15B/7",
+  city: "Poznań",
+  postalCode: "61-303",
+  email: "mensitiva1@gmail.com",
 } as const;
 
-// أنواع صارمة للنصوص
 type Sections = {
   introH: string;
   intro: string;
@@ -43,61 +40,76 @@ type TermsT = {
   sections: Sections;
 };
 
-// قاموس اللغات مضبوط على النوع أعلاه
 const i18n: Record<Locale, TermsT> = {
   en: {
-    title: 'Terms & Conditions',
-    updatedLabel: 'Last updated:',
-    country: 'Poland',
+    title: "Terms & Conditions",
+    updatedLabel: "Last updated:",
+    country: "Poland",
     sections: {
-      introH: 'Introduction',
+      introH: "Introduction",
       intro:
-        'The website provides publicly available content (articles). By using the site you accept these Terms.',
-      acceptableH: 'Acceptable Use',
+        "The website provides publicly available content (articles). By using the site you accept these Terms.",
+      acceptableH: "Acceptable Use",
       acceptable: [
-        'No unlawful activity, rights infringement, or spam.',
-        'No attempts to bypass security or abusive scraping.',
+        "No unlawful activity, rights infringement, or spam.",
+        "No attempts to bypass security or abusive scraping.",
       ],
-      ipH: 'Intellectual Property',
-      ip: 'Layout, logo and site content are protected. Copying without permission is prohibited except as permitted by law.',
-      liabilityH: 'Liability',
+      ipH: "Intellectual Property",
+      ip: "Layout, logo and site content are protected. Copying without permission is prohibited except as permitted by law.",
+      liabilityH: "Liability",
       liability:
-        'The site is provided “as is”. To the extent permitted by law, we exclude liability for indirect damages.',
-      contactH: 'Contact & Provider',
-      lawH: 'Governing Law & Jurisdiction',
-      law:
-        'These Terms are governed by Polish law. Courts at the provider’s seat have jurisdiction, subject to mandatory consumer rules.',
-      providerLabel: 'Provider:',
-      emailLabel: 'Email:',
+        "The site is provided “as is”. To the extent permitted by law, we exclude liability for indirect damages.",
+      contactH: "Contact & Provider",
+      lawH: "Governing Law & Jurisdiction",
+      law: "These Terms are governed by Polish law. Courts at the provider’s seat have jurisdiction, subject to mandatory consumer rules.",
+      providerLabel: "Provider:",
+      emailLabel: "Email:",
     },
   },
   pl: {
-    title: 'Regulamin',
-    updatedLabel: 'Ostatnia aktualizacja:',
-    country: 'Polska',
+    title: "Regulamin",
+    updatedLabel: "Ostatnia aktualizacja:",
+    country: "Polska",
     sections: {
-      introH: 'Wstęp',
+      introH: "Wstęp",
       intro:
-        'Serwis udostępnia treści publiczne (artykuły). Korzystając z serwisu akceptujesz niniejszy Regulamin.',
-      acceptableH: 'Dozwolony sposób korzystania',
+        "Serwis udostępnia treści publiczne (artykuły). Korzystając z serwisu akceptujesz niniejszy Regulamin.",
+      acceptableH: "Dozwolony sposób korzystania",
       acceptable: [
-        'Zakaz działań bezprawnych, naruszeń dóbr osób trzecich, spamu.',
-        'Zakaz prób obchodzenia zabezpieczeń i nadmiernego scrapingu.',
+        "Zakaz działań bezprawnych, naruszeń dóbr osób trzecich, spamu.",
+        "Zakaz prób obchodzenia zabezpieczeń i nadmiernego scrapingu.",
       ],
-      ipH: 'Własność intelektualna',
-      ip: 'Układ, logo oraz treści w serwisie są chronione. Kopiowanie bez zgody jest zabronione poza dozwolonym użytkiem.',
-      liabilityH: 'Odpowiedzialność',
+      ipH: "Własność intelektualna",
+      ip: "Układ, logo oraz treści w serwisie są chronione. Kopiowanie bez zgody jest zabronione poza dozwolonym użytkiem.",
+      liabilityH: "Odpowiedzialność",
       liability:
-        'Serwis udostępniany jest „as is”. W zakresie dozwolonym przez prawo wyłączamy odpowiedzialność za szkody pośrednie.',
-      contactH: 'Kontakt i Usługodawca',
-      lawH: 'Prawo właściwe i jurysdykcja',
-      law:
-        'Regulamin podlega prawu polskiemu. Właściwe są sądy miejscowo właściwe dla siedziby Usługodawcy, z poszanowaniem praw konsumentów.',
-      providerLabel: 'Usługodawca:',
-      emailLabel: 'E-mail:',
+        "Serwis udostępniany jest „as is”. W zakresie dozwolonym przez prawo wyłączamy odpowiedzialność za szkody pośrednie.",
+      contactH: "Kontakt i Usługodawca",
+      lawH: "Prawo właściwe i jurysdykcja",
+      law: "Regulamin podlega prawu polskiemu. Właściwe są sądy miejscowo właściwe dla siedziby Usługodawcy, z poszanowaniem praw konsumentów.",
+      providerLabel: "Usługodawca:",
+      emailLabel: "E-mail:",
     },
   },
 };
+
+// ✅ SSR/CSR-stable date formatting for ISO date string YYYY-MM-DD
+function formatDateStableUTC(iso: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!match) return iso;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]); // 1-12
+  const day = Number(match[3]); // 1-31
+
+  if (!Number.isFinite(year) || month < 1 || month > 12 || day < 1 || day > 31) return iso;
+
+  const d = new Date(Date.UTC(year, month - 1, day));
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(d.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${dd}`;
+}
 
 export async function generateMetadata({
   params,
@@ -105,12 +117,13 @@ export async function generateMetadata({
   params: Promise<{ locale: Locale }>;
 }): Promise<Metadata> {
   const { locale } = await params;
-  const loc: Locale = LOCALES.includes(locale) ? locale : 'en';
+  const loc: Locale = LOCALES.includes(locale) ? locale : "en";
   const t = i18n[loc];
+
   return {
     title: `${t.title} | ${SITE_NAME}`,
     description:
-      loc === 'pl'
+      loc === "pl"
         ? `Regulamin korzystania z serwisu ${SITE_NAME}.`
         : `Terms of use for ${SITE_NAME}.`,
     alternates: { canonical: `/${loc}/terms` },
@@ -123,14 +136,11 @@ export default async function TermsPage({
   params: Promise<{ locale: Locale }>;
 }) {
   const { locale } = await params;
-  const loc: Locale = LOCALES.includes(locale) ? locale : 'en';
+  const loc: Locale = LOCALES.includes(locale) ? locale : "en";
   const t = i18n[loc];
 
-  const updatedISO = '2025-09-14';
-  const updatedHuman = new Date(updatedISO).toLocaleDateString(
-    loc === 'pl' ? 'pl-PL' : 'en-GB',
-    { year: 'numeric', month: 'long', day: 'numeric' },
-  );
+  const updatedISO = "2025-09-14";
+  const updatedHuman = formatDateStableUTC(updatedISO);
 
   return (
     <main className="min-h-screen flex justify-center px-4 pt-18 pb-24 bg-gradient-to-br from-blue-50 via-sky-50 to-emerald-50 dark:from-zinc-800 dark:via-zinc-900 dark:to-zinc-950">
@@ -168,9 +178,9 @@ export default async function TermsPage({
 
           <h2>{t.sections.contactH}</h2>
           <p>
-            <strong>{t.sections.providerLabel}</strong>{' '}
-            {PROVIDER.legalName} &mdash; {PROVIDER.brandName}, {PROVIDER.street},{' '}
-            {PROVIDER.postalCode} {PROVIDER.city}, {t.country}.{' '}
+            <strong>{t.sections.providerLabel}</strong>{" "}
+            {PROVIDER.legalName} &mdash; {PROVIDER.brandName}, {PROVIDER.street},{" "}
+            {PROVIDER.postalCode} {PROVIDER.city}, {t.country}.{" "}
             <strong>{t.sections.emailLabel}</strong> {PROVIDER.email}
           </p>
 

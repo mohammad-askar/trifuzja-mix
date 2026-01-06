@@ -1,25 +1,47 @@
 // components/admin/articles/DataTable.tsx
-'use client';
+"use client";
 
 import {
-  ChevronLeft, ChevronRight, Pencil, Trash as TrashIcon, RefreshCw,
-} from 'lucide-react';
-import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { useTransition, useMemo, useState } from 'react';
-import clsx from 'clsx';
-import toast from 'react-hot-toast';
-import ConfirmDelete from '@/app/components/ConfirmDelete';
-import { deleteArticle as deleteArticleAction } from './actions';
-import type { Row } from '@/app/[locale]/admin/articles/page';
+  ChevronLeft,
+  ChevronRight,
+  Pencil,
+  Trash as TrashIcon,
+  RefreshCw,
+} from "lucide-react";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useTransition, useMemo, useState, useCallback } from "react";
+import clsx from "clsx";
+import toast from "react-hot-toast";
+import ConfirmDelete from "@/app/components/ConfirmDelete";
+import { deleteArticle as deleteArticleAction } from "./actions";
+import type { Row } from "@/app/[locale]/admin/articles/page";
 
 type DeleteResult = { ok: true } | { error: string };
 
 interface Props {
-  locale: 'en' | 'pl';
+  locale: "en" | "pl";
   rows: Row[];
   total: number;
   pagination: { page: number; totalPages: number; limit: number };
+}
+
+type DateInput = string | number | Date;
+
+/**
+ * ✅ تنسيق تاريخ ثابت (UTC) لمنع Hydration mismatch
+ * بدل toLocaleDateString التي تختلف حسب timezone/ICU بين السيرفر والعميل.
+ */
+function formatDateStableUTC(input: DateInput): string {
+  const d = new Date(input);
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function clamp(n: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, n));
 }
 
 const runDelete = (slug: string): Promise<DeleteResult> =>
@@ -30,31 +52,34 @@ export default function DataTable({ locale, rows, total, pagination }: Props) {
   const router = useRouter();
   const params = useSearchParams();
 
+  // تثبيت query string لتجنب تذبذب مرجع params
+  const paramsStr = useMemo(() => params.toString(), [params]);
+
   const t = useMemo(
     () => ({
-      title: locale === 'pl' ? 'Tytuł' : 'Title',
-      created: locale === 'pl' ? 'Utworzono' : 'Created',
-      actions: locale === 'pl' ? 'Akcje' : 'Actions',
-      pageLbl: locale === 'pl' ? 'Strona' : 'Page',
-      of: locale === 'pl' ? 'z' : 'of',
-      items: locale === 'pl' ? 'pozycji' : 'items',
-      delOk: locale === 'pl' ? 'Usunięto artykuł.' : 'Article deleted.',
-      edit: locale === 'pl' ? 'Edytuj' : 'Edit',
-      del: locale === 'pl' ? 'Usuń' : 'Delete',
-      noArticles: locale === 'pl' ? 'Brak artykułów.' : 'No articles.',
-      prev: locale === 'pl' ? 'Poprzednia' : 'Previous',
-      next: locale === 'pl' ? 'Następna' : 'Next',
+      title: locale === "pl" ? "Tytuł" : "Title",
+      created: locale === "pl" ? "Utworzono" : "Created",
+      actions: locale === "pl" ? "Akcje" : "Actions",
+      pageLbl: locale === "pl" ? "Strona" : "Page",
+      of: locale === "pl" ? "z" : "of",
+      items: locale === "pl" ? "pozycji" : "items",
+      delOk: locale === "pl" ? "Usunięto artykuł." : "Article deleted.",
+      edit: locale === "pl" ? "Edytuj" : "Edit",
+      del: locale === "pl" ? "Usuń" : "Delete",
+      noArticles: locale === "pl" ? "Brak artykułów." : "No articles.",
+      prev: locale === "pl" ? "Poprzednia" : "Previous",
+      next: locale === "pl" ? "Następna" : "Next",
     }),
     [locale],
   );
 
   const tConfirm = useMemo(
     () => ({
-      title: locale === 'pl' ? 'Potwierdź usunięcie' : 'Confirm deletion',
-      cancel: locale === 'pl' ? 'Anuluj' : 'Cancel',
-      del: locale === 'pl' ? 'Usuń' : 'Delete',
+      title: locale === "pl" ? "Potwierdź usunięcie" : "Confirm deletion",
+      cancel: locale === "pl" ? "Anuluj" : "Cancel",
+      del: locale === "pl" ? "Usuń" : "Delete",
       msg: (titleStr: string) =>
-        locale === 'pl'
+        locale === "pl"
           ? `Czy na pewno chcesz usunąć artykuł: „${titleStr}”?`
           : `Are you sure you want to delete: “${titleStr}”?`,
     }),
@@ -64,17 +89,18 @@ export default function DataTable({ locale, rows, total, pagination }: Props) {
   const [dlgOpen, setDlgOpen] = useState(false);
   const [toDelete, setToDelete] = useState<null | { slug: string; title: string }>(null);
 
-  const askDelete = (slug: string, title: string) => {
+  const askDelete = useCallback((slug: string, title: string) => {
     setToDelete({ slug, title });
     setDlgOpen(true);
-  };
+  }, []);
 
-  const confirmDelete = () => {
+  const confirmDelete = useCallback(() => {
     if (!toDelete) return;
+
     start(() => {
       runDelete(toDelete.slug)
         .then((res) => {
-          if ('error' in res) {
+          if ("error" in res) {
             toast.error(res.error);
           } else {
             toast.success(t.delOk);
@@ -83,16 +109,18 @@ export default function DataTable({ locale, rows, total, pagination }: Props) {
         })
         .finally(() => setDlgOpen(false));
     });
-  };
+  }, [router, t.delOk, toDelete]);
 
-  const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n));
-
-  const pageHref = (p: number) => {
-    const safe = clamp(p, 1, pagination.totalPages);
-    const qp = new URLSearchParams(params.toString());
-    qp.set('page', String(safe));
-    return `?${qp.toString()}`;
-  };
+  const pageHref = useCallback(
+    (p: number) => {
+      const safe = clamp(p, 1, pagination.totalPages);
+      const qp = new URLSearchParams(paramsStr);
+      qp.set("page", String(safe));
+      const qs = qp.toString();
+      return qs ? `?${qs}` : "";
+    },
+    [pagination.totalPages, paramsStr],
+  );
 
   if (total === 0) return <EmptyState label={t.noArticles} />;
 
@@ -113,10 +141,10 @@ export default function DataTable({ locale, rows, total, pagination }: Props) {
       scroll={false}
       aria-label={ariaLabel}
       className={clsx(
-        'p-2 rounded-full border border-white/10 flex items-center justify-center text-zinc-200',
+        "p-2 rounded-full border border-white/10 flex items-center justify-center text-zinc-200",
         disabled
-          ? 'opacity-40 pointer-events-none'
-          : 'hover:bg-white/5 active:scale-[.97] transition',
+          ? "opacity-40 pointer-events-none"
+          : "hover:bg-white/5 active:scale-[.97] transition",
       )}
     >
       {children}
@@ -141,9 +169,10 @@ export default function DataTable({ locale, rows, total, pagination }: Props) {
               <Th className="w-32 text-center">{t.actions}</Th>
             </tr>
           </thead>
-        <tbody className="text-zinc-900 dark:text-zinc-100">
+
+          <tbody className="text-zinc-900 dark:text-zinc-100">
             {rows.map((r, i) => (
-              <tr key={r.id} className={clsx(i % 2 ? 'bg-zinc-900/60' : '', 'group')}>
+              <tr key={r.id} className={clsx(i % 2 ? "bg-zinc-900/60" : "", "group")}>
                 <Td>
                   <Link
                     href={`/${locale}/admin/articles/${r.slug}/edit`}
@@ -154,12 +183,9 @@ export default function DataTable({ locale, rows, total, pagination }: Props) {
                   </Link>
                 </Td>
 
+                {/* ✅ ثابت SSR/CSR */}
                 <Td className="text-xs text-zinc-600 dark:text-zinc-300">
-                  {new Date(r.createdAt).toLocaleDateString(locale, {
-                    year: 'numeric',
-                    month: 'short',
-                    day: 'numeric',
-                  })}
+                  {formatDateStableUTC(r.createdAt)}
                 </Td>
 
                 <Td>
@@ -175,6 +201,7 @@ export default function DataTable({ locale, rows, total, pagination }: Props) {
                     </Link>
 
                     <button
+                      type="button"
                       title={t.del}
                       aria-label={t.del}
                       disabled={pending}
@@ -197,6 +224,7 @@ export default function DataTable({ locale, rows, total, pagination }: Props) {
             <b>{pagination.totalPages}</b>&nbsp;–&nbsp;<b>{total.toLocaleString()}</b>&nbsp;
             {t.items}
           </span>
+
           <div className="flex gap-1">
             <PageBtn
               href={pageHref(pagination.page - 1)}
@@ -205,6 +233,7 @@ export default function DataTable({ locale, rows, total, pagination }: Props) {
             >
               <ChevronLeft className="w-5 h-5" />
             </PageBtn>
+
             <PageBtn
               href={pageHref(pagination.page + 1)}
               disabled={pagination.page === pagination.totalPages}
@@ -224,13 +253,9 @@ export default function DataTable({ locale, rows, total, pagination }: Props) {
             className="rounded-xl border border-zinc-800 bg-gray-900/80 p-3 text-zinc-100"
           >
             <h3 className="font-semibold leading-snug">{r.title}</h3>
+
             <p className="mt-1 text-[11px] text-zinc-400">
-              {t.created}:{' '}
-              {new Date(r.createdAt).toLocaleDateString(locale, {
-                year: 'numeric',
-                month: 'short',
-                day: 'numeric',
-              })}
+              {t.created}: {formatDateStableUTC(r.createdAt)}
             </p>
 
             <div className="mt-3 flex items-center gap-4">
@@ -245,6 +270,7 @@ export default function DataTable({ locale, rows, total, pagination }: Props) {
               </Link>
 
               <button
+                type="button"
                 onClick={() => askDelete(r.slug, r.title)}
                 disabled={pending}
                 className="ml-auto inline-flex items-center gap-1 rounded-full bg-rose-600 px-3 py-1.5 text-xs font-medium text-white shadow hover:bg-rose-500 disabled:opacity-40"
@@ -265,13 +291,13 @@ export default function DataTable({ locale, rows, total, pagination }: Props) {
             scroll={false}
             aria-label={t.prev}
             className={clsx(
-              'inline-flex items-center rounded-full border border-zinc-700 px-3 py-1.5 text-xs',
+              "inline-flex items-center rounded-full border border-zinc-700 px-3 py-1.5 text-xs",
               pagination.page === 1
-                ? 'opacity-40 pointer-events-none'
-                : 'bg-gray-200 hover:bg-gray-100 text-zinc-900',
+                ? "opacity-40 pointer-events-none"
+                : "bg-gray-200 hover:bg-gray-100 text-zinc-900",
             )}
           >
-            ‹ {locale === 'pl' ? 'Poprzednia' : 'Prev'}
+            ‹ {locale === "pl" ? "Poprzednia" : "Prev"}
           </Link>
 
           <span className="inline-flex items-center rounded-full bg-gradient-to-r from-sky-600 via-indigo-600 to-fuchsia-600 px-4 py-1.5 text-xs font-semibold text-white shadow">
@@ -284,13 +310,13 @@ export default function DataTable({ locale, rows, total, pagination }: Props) {
             scroll={false}
             aria-label={t.next}
             className={clsx(
-              'inline-flex items-center rounded-full border border-zinc-700 px-3 py-1.5 text-xs',
+              "inline-flex items-center rounded-full border border-zinc-700 px-3 py-1.5 text-xs",
               pagination.page === pagination.totalPages
-                ? 'opacity-40 pointer-events-none'
-                : 'bg-gray-200 hover:bg-gray-100 text-zinc-900',
+                ? "opacity-40 pointer-events-none"
+                : "bg-gray-200 hover:bg-gray-100 text-zinc-900",
             )}
           >
-            {locale === 'pl' ? 'Następna' : 'Next'} ›
+            {locale === "pl" ? "Następna" : "Next"} ›
           </Link>
         </nav>
       </div>
@@ -300,7 +326,7 @@ export default function DataTable({ locale, rows, total, pagination }: Props) {
         setOpen={setDlgOpen}
         onConfirm={confirmDelete}
         title={tConfirm.title}
-        message={toDelete ? tConfirm.msg(toDelete.title) : ''}
+        message={toDelete ? tConfirm.msg(toDelete.title) : ""}
         cancelLabel={tConfirm.cancel}
         deleteLabel={tConfirm.del}
       />
@@ -309,18 +335,22 @@ export default function DataTable({ locale, rows, total, pagination }: Props) {
 }
 
 /* Helpers */
-const Th = ({ children, className }: { children: React.ReactNode; className?: string }) => (
-  <th className={clsx('py-3 px-4 text-left', className)}>{children}</th>
-);
+const Th = ({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) => <th className={clsx("py-3 px-4 text-left", className)}>{children}</th>;
 
-const Td = ({ children, className }: { children: React.ReactNode; className?: string }) => (
-  <td className={clsx('py-2 px-4', className)}>{children}</td>
-);
+const Td = ({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) => <td className={clsx("py-2 px-4", className)}>{children}</td>;
 
 function EmptyState({ label }: { label: string }) {
-  return (
-    <div className="border rounded-xl py-24 text-center text-zinc-400">
-      {label}
-    </div>
-  );
+  return <div className="border rounded-xl py-24 text-center text-zinc-400">{label}</div>;
 }

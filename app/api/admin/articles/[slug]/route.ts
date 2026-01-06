@@ -1,12 +1,11 @@
-//E:\trifuzja-mix\app\api\admin\articles\[slug]\route.ts
-export const dynamic = 'force-dynamic';
+// E:\trifuzja-mix\app\api\admin\articles\[slug]\route.ts
+export const dynamic = "force-dynamic";
 
-import { NextRequest, NextResponse } from 'next/server';
-import clientPromise from '@/types/mongodb';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/authOptions';
-import { z, ZodError } from 'zod';
-import type { ObjectId, Collection, WithId } from 'mongodb';
+import { NextRequest, NextResponse } from "next/server";
+import clientPromise from "@/types/mongodb";
+import { auth } from "@/auth";
+import { z, ZodError } from "zod";
+import type { ObjectId, Collection, WithId } from "mongodb";
 
 /* ----------------------------- Types/Helpers ---------------------------- */
 
@@ -21,28 +20,34 @@ interface ArticleDocDb {
   categoryId?: string;
   coverUrl?: string;
   heroImageUrl?: string;
-  status?: 'published';
+  status?: "published";
   createdAt?: Date;
   updatedAt: Date;
   readingTime?: string;
   meta?: Record<string, unknown>;
 }
 
-interface ArticleDocApi extends Omit<ArticleDocDb, '_id'> {
+interface ArticleDocApi extends Omit<ArticleDocDb, "_id"> {
   _id: string;
 }
 
-type AdminSessionShape = { user?: { role?: string | null } | null } | null | undefined;
+type Role = "admin" | "user";
+type AuthUser = { role?: Role | string | null } | null | undefined;
+type AuthSession = { user?: AuthUser } | null;
 
-function isObject(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null;
+
+function hasAdminRole(session: AuthSession): boolean {
+  const user = session?.user;
+  if (!user) return false;
+
+  if (typeof user === "object" && "role" in user) {
+    const role = (user as { role?: unknown }).role;
+    return role === "admin";
+  }
+  return false;
 }
-function requireAdmin(session: unknown): session is AdminSessionShape & { user: { role: string } } {
-  if (!isObject(session)) return false;
-  const u = (session as Record<string, unknown>).user;
-  return isObject(u) && (u as Record<string, unknown>).role === 'admin';
-}
-function responseError(msg: string, status = 400) {
+
+function responseError(msg: string, status = 400): NextResponse {
   return NextResponse.json({ error: msg }, { status });
 }
 
@@ -50,8 +55,8 @@ const urlSchema = z
   .string()
   .trim()
   .min(1)
-  .refine((v) => v.startsWith('http://') || v.startsWith('https://') || v.startsWith('/'), {
-    message: 'Invalid URL',
+  .refine((v) => v.startsWith("http://") || v.startsWith("https://") || v.startsWith("/"), {
+    message: "Invalid URL",
   });
 
 // body schema:
@@ -65,40 +70,44 @@ const UpsertSchema = z
     heroImageUrl: urlSchema.optional(),
     readingTime: z.union([z.number().int().nonnegative(), z.string().trim().min(1)]).optional(),
     meta: z.record(z.string(), z.unknown()).optional(),
-    preserveSlug: z.boolean().optional(), // 👈 NEW
+    preserveSlug: z.boolean().optional(),
   })
   .superRefine((data, ctx) => {
-    const c = (data.content ?? '').replace(/<[^>]+>/g, '').trim();
-    if (!c) ctx.addIssue({ path: ['content'], code: z.ZodIssueCode.custom, message: 'content is required' });
+    const c = (data.content ?? "").replace(/<[^>]+>/g, "").trim();
+    if (!c) ctx.addIssue({ path: ["content"], code: z.ZodIssueCode.custom, message: "content is required" });
     if (!data.categoryId)
-      ctx.addIssue({ path: ['categoryId'], code: z.ZodIssueCode.custom, message: 'categoryId is required' });
+      ctx.addIssue({ path: ["categoryId"], code: z.ZodIssueCode.custom, message: "categoryId is required" });
   });
 
-function computeReadingTimeFromHtml(html?: string) {
+function computeReadingTimeFromHtml(html?: string): string | undefined {
   if (!html) return undefined;
-  const words = html.replace(/<[^>]+>/g, ' ').trim().split(/\s+/).filter(Boolean).length;
+  const words = html.replace(/<[^>]+>/g, " ").trim().split(/\s+/).filter(Boolean).length;
   const minutes = Math.max(1, Math.ceil(words / 200));
   return `${minutes} min read`;
 }
+
 function toPlainStringReadingTime(rt?: number | string): string | undefined {
   if (rt === undefined) return undefined;
-  return typeof rt === 'number' ? String(rt) : rt;
+  return typeof rt === "number" ? String(rt) : rt;
 }
+
 function pruneUndefined<T extends Record<string, unknown>>(obj: T): T {
-  for (const k of Object.keys(obj)) if (obj[k] === undefined) delete obj[k];
+  for (const k of Object.keys(obj)) {
+    if (obj[k] === undefined) delete obj[k];
+  }
   return obj;
 }
 
 function makeSlug(input: string): string {
   return input
-    .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/[^a-z0-9\s-]/g, "")
     .trim()
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-+|-+$/g, '')
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "")
     .slice(0, 120);
 }
 
@@ -107,157 +116,162 @@ async function ensureUniqueSlugForEdit(
   selfId: ObjectId,
   coll: Collection<ArticleDocDb>,
 ): Promise<string> {
-  const clean = base || 'post';
+  const clean = base || "post";
   let candidate = clean;
   let i = 2;
+
   while (i < 2000) {
-    const exists = await coll.findOne(
-      { slug: candidate, _id: { $ne: selfId } },
-      { projection: { _id: 1 } },
-    );
+    const exists = await coll.findOne({ slug: candidate, _id: { $ne: selfId } }, { projection: { _id: 1 } });
     if (!exists) return candidate;
     candidate = `${clean}-${i++}`;
   }
-  throw new Error('Slug collision loop (edit)');
+  throw new Error("Slug collision loop (edit)");
 }
 
-async function ensureUniqueSlugForCreate(
-  base: string,
-  coll: Collection<ArticleDocDb>,
-): Promise<string> {
-  const clean = base || 'post';
+async function ensureUniqueSlugForCreate(base: string, coll: Collection<ArticleDocDb>): Promise<string> {
+  const clean = base || "post";
   let candidate = clean;
   let i = 2;
+
   while (i < 2000) {
     const exists = await coll.findOne({ slug: candidate }, { projection: { _id: 1 } });
     if (!exists) return candidate;
     candidate = `${clean}-${i++}`;
   }
-  throw new Error('Slug collision loop (create)');
+  throw new Error("Slug collision loop (create)");
 }
 
 function toApi(doc: WithId<ArticleDocDb>): ArticleDocApi {
   return { ...doc, _id: doc._id.toString() };
 }
 
+async function requireAdminOr401(): Promise<{ ok: true } | { ok: false; res: NextResponse }> {
+  const session = await auth();
+  if (!hasAdminRole(session)) {
+    return { ok: false, res: responseError("Unauthorized", 401) };
+  }
+  return { ok: true };
+}
+
 /* ---------------------------------- GET --------------------------------- */
 
-export async function GET(_req: NextRequest, ctx: Ctx) {
+export async function GET(_req: NextRequest, ctx: Ctx): Promise<NextResponse> {
+  const guard = await requireAdminOr401();
+  if (!guard.ok) return guard.res;
+
   const { slug } = await ctx.params;
-  const session = await getServerSession(authOptions);
-  if (!requireAdmin(session)) return responseError('Unauthorized', 401);
 
   try {
     const db = (await clientPromise).db();
-    const article = await db.collection<ArticleDocDb>('articles').findOne({ slug });
-    if (!article) return responseError('Not found', 404);
+    const article = await db.collection<ArticleDocDb>("articles").findOne({ slug });
+    if (!article) return responseError("Not found", 404);
+
     return NextResponse.json(toApi({ ...article, _id: article._id }), { status: 200 });
-  } catch (e) {
-    console.error('GET /api/admin/articles/[slug] error:', e);
-    return responseError('Internal Server Error', 500);
+  } catch (e: unknown) {
+    console.error("GET /api/admin/articles/[slug] error:", e);
+    return responseError("Internal Server Error", 500);
   }
 }
 
 /* ---------------------------------- PUT --------------------------------- */
 
-export async function PUT(req: NextRequest, ctx: Ctx) {
+export async function PUT(req: NextRequest, ctx: Ctx): Promise<NextResponse> {
+  const guard = await requireAdminOr401();
+  if (!guard.ok) return guard.res;
+
   const { slug: currentSlug } = await ctx.params;
-  const session = await getServerSession(authOptions);
-  if (!requireAdmin(session)) return responseError('Unauthorized', 401);
 
   let body: z.infer<typeof UpsertSchema>;
   try {
     body = UpsertSchema.parse(await req.json());
-  } catch (e) {
+  } catch (e: unknown) {
     return responseError(
-      e instanceof ZodError ? e.issues.map((i) => i.message).join(' | ') : 'Invalid body',
+      e instanceof ZodError ? e.issues.map((i) => i.message).join(" | ") : "Invalid body",
       400,
     );
   }
 
   try {
     const db = (await clientPromise).db();
-    const coll = db.collection<ArticleDocDb>('articles');
+    const coll = db.collection<ArticleDocDb>("articles");
 
-    const current = await coll.findOne(
-      { slug: currentSlug },
-      { projection: { _id: 1, slug: 1 } },
-    );
+    const current = await coll.findOne({ slug: currentSlug }, { projection: { _id: 1, slug: 1 } });
 
     let readingTime = toPlainStringReadingTime(body.readingTime);
     if (!readingTime && body.content) {
       readingTime = computeReadingTimeFromHtml(body.content);
     }
+
     const cover = body.coverUrl ?? body.heroImageUrl;
     const desiredBase = makeSlug(body.title);
 
-    /* ------------------------------- EDIT FLOW ------------------------------ */
-    if (current) {
-      const preserve = body.preserveSlug === true;
-      let finalSlug = current.slug;
-      if (!preserve && desiredBase && desiredBase !== current.slug) {
-        finalSlug = await ensureUniqueSlugForEdit(desiredBase, current._id, coll);
-      }
+/* ------------------------------- EDIT FLOW ------------------------------ */
+if (current) {
+  const preserve = body.preserveSlug === true;
+  let finalSlug = current.slug;
 
-      const setRaw: Partial<ArticleDocDb> = {
-        slug: finalSlug,
-        title: body.title,
-        excerpt: body.excerpt,
-        content: body.content,
-        categoryId: body.categoryId && body.categoryId !== '' ? body.categoryId : undefined,
-        coverUrl: cover,
-        heroImageUrl: cover,
-        readingTime,
-        meta: body.meta as Record<string, unknown> | undefined,
-        status: 'published',
-        updatedAt: new Date(),
-      };
+  if (!preserve && desiredBase && desiredBase !== current.slug) {
+    finalSlug = await ensureUniqueSlugForEdit(desiredBase, current._id, coll);
+  }
 
-      const setClean = pruneUndefined(setRaw);
+  const setRaw: Partial<ArticleDocDb> = {
+    slug: finalSlug,
+    title: body.title,
+    excerpt: body.excerpt,
+    content: body.content,
+    categoryId: body.categoryId && body.categoryId !== "" ? body.categoryId : undefined,
+    coverUrl: cover,
+    heroImageUrl: cover,
+    readingTime,
+    meta: body.meta,
+    status: "published",
+    updatedAt: new Date(),
+  };
 
-      const result = await coll.findOneAndUpdate(
-        { _id: current._id },
-        { $set: setClean },
-        { returnDocument: 'after' },
-      );
+  const setClean = pruneUndefined({ ...setRaw });
 
-      const updated = result.value;
-      if (!updated) return responseError('Not found', 404);
+  const updateRes = await coll.updateOne({ _id: current._id }, { $set: setClean });
+  if (updateRes.matchedCount === 0) return responseError("Not found", 404);
 
-      return NextResponse.json(
-        {
-          ok: true,
-          article: toApi(updated),
-          slugChanged: finalSlug !== current.slug,
-          newSlug: finalSlug,
-        },
-        { status: 200 },
-      );
-    }
+  const updated = await coll.findOne({ _id: current._id });
+  if (!updated) return responseError("Not found", 404);
+
+  return NextResponse.json(
+    {
+      ok: true,
+      article: toApi(updated),
+      slugChanged: finalSlug !== current.slug,
+      newSlug: finalSlug,
+    },
+    { status: 200 },
+  );
+}
+
 
     /* ------------------------------ CREATE FLOW ----------------------------- */
-    const base = desiredBase || makeSlug(currentSlug) || 'post';
+    const base = desiredBase || makeSlug(currentSlug) || "post";
     const finalSlug = await ensureUniqueSlugForCreate(base, coll);
 
-    const newDoc: Omit<ArticleDocDb, '_id'> = {
+    const newDoc: Omit<ArticleDocDb, "_id"> = {
       slug: finalSlug,
       title: body.title,
       excerpt: body.excerpt,
       content: body.content,
-      categoryId: body.categoryId && body.categoryId !== '' ? body.categoryId : undefined,
+      categoryId: body.categoryId && body.categoryId !== "" ? body.categoryId : undefined,
       coverUrl: cover,
       heroImageUrl: cover,
       readingTime,
-      meta: body.meta as Record<string, unknown> | undefined,
-      status: 'published',
+      meta: body.meta,
+      status: "published",
       createdAt: new Date(),
       updatedAt: new Date(),
     };
 
-    const cleanToInsert = pruneUndefined({ ...newDoc });
-    const insertRes = await coll.insertOne(cleanToInsert as ArticleDocDb);
+    const cleanToInsert = pruneUndefined({ ...newDoc } as Record<string, unknown>) as Omit<ArticleDocDb, "_id">;
+
+    const insertRes = await coll.insertOne(cleanToInsert as unknown as ArticleDocDb);
     const inserted = await coll.findOne({ _id: insertRes.insertedId });
-    if (!inserted) return responseError('Insert failed', 500);
+    if (!inserted) return responseError("Insert failed", 500);
 
     return NextResponse.json(
       {
@@ -269,26 +283,28 @@ export async function PUT(req: NextRequest, ctx: Ctx) {
       },
       { status: 201 },
     );
-  } catch (e) {
-    console.error('PUT /api/admin/articles/[slug] error:', e);
-    return responseError('Internal Server Error', 500);
+  } catch (e: unknown) {
+    console.error("PUT /api/admin/articles/[slug] error:", e);
+    return responseError("Internal Server Error", 500);
   }
 }
 
 /* -------------------------------- DELETE -------------------------------- */
 
-export async function DELETE(_req: NextRequest, ctx: Ctx) {
+export async function DELETE(_req: NextRequest, ctx: Ctx): Promise<NextResponse> {
+  const guard = await requireAdminOr401();
+  if (!guard.ok) return guard.res;
+
   const { slug } = await ctx.params;
-  const session = await getServerSession(authOptions);
-  if (!requireAdmin(session)) return responseError('Unauthorized', 401);
 
   try {
     const db = (await clientPromise).db();
-    const res = await db.collection<ArticleDocDb>('articles').deleteOne({ slug });
-    if (res.deletedCount === 0) return responseError('Not found', 404);
+    const res = await db.collection<ArticleDocDb>("articles").deleteOne({ slug });
+    if (res.deletedCount === 0) return responseError("Not found", 404);
+
     return NextResponse.json({ ok: true, slug }, { status: 200 });
-  } catch (e) {
-    console.error('DELETE /api/admin/articles/[slug] error:', e);
-    return responseError('Internal Server Error', 500);
+  } catch (e: unknown) {
+    console.error("DELETE /api/admin/articles/[slug] error:", e);
+    return responseError("Internal Server Error", 500);
   }
 }

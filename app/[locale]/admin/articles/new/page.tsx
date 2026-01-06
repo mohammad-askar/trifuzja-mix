@@ -1,23 +1,21 @@
 // app/[locale]/admin/articles/new/page.tsx
-'use client';
+"use client";
 
-import React, { Suspense } from 'react';
-import { useParams, useRouter } from 'next/navigation';
-import dynamic from 'next/dynamic';
-import { useSession } from 'next-auth/react';
-import Link from 'next/link';
+import React, { Suspense } from "react";
+import { useParams, useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
+import { useSession } from "next-auth/react";
+import Link from "next/link";
 
-/* ------------------------- Dynamic ArticleEditor ------------------------- */
-const ArticleEditor = dynamic(() => import('@/app/components/ArticleEditor'), {
+const ArticleEditor = dynamic(() => import("@/app/components/ArticleEditor"), {
   ssr: false,
 });
 
-/* --------------------------------- i18n --------------------------------- */
-const LOCALES = ['en', 'pl'] as const;
+const LOCALES = ["en", "pl"] as const;
 type Locale = (typeof LOCALES)[number];
 
 function isLocale(x: unknown): x is Locale {
-  return typeof x === 'string' && (LOCALES as readonly string[]).includes(x);
+  return typeof x === "string" && (LOCALES as readonly string[]).includes(x);
 }
 
 const TEXTS: Record<
@@ -36,32 +34,31 @@ const TEXTS: Record<
   }
 > = {
   en: {
-    title: 'New Article',
-    subtitle: 'Write your article, add a cover and save.',
-    login: 'You must ',
-    loginLink: 'login',
-    loading: 'Loading…',
-    unauthorized: 'Unauthorized – ask an admin to upgrade your role.',
-    backToList: 'Back to articles',
-    goToLogin: 'Go to login',
-    editorLoading: 'Preparing the editor…',
-    errorLoading: 'Something went wrong while loading the editor.',
+    title: "New Article",
+    subtitle: "Write your article, add a cover and save.",
+    login: "You must ",
+    loginLink: "login",
+    loading: "Loading…",
+    unauthorized: "Unauthorized – admin access required.",
+    backToList: "Back to articles",
+    goToLogin: "Go to login",
+    editorLoading: "Preparing the editor…",
+    errorLoading: "Something went wrong while loading the editor.",
   },
   pl: {
-    title: 'Nowy artykuł',
-    subtitle: 'Napisz artykuł, dodaj okładkę i zapisz.',
-    login: 'Musisz się ',
-    loginLink: 'zalogować',
-    loading: 'Ładowanie…',
-    unauthorized: 'Brak uprawnień – poproś admina o wyższy poziom.',
-    backToList: 'Powrót do artykułów',
-    goToLogin: 'Przejdź do logowania',
-    editorLoading: 'Trwa przygotowywanie edytora…',
-    errorLoading: 'Wystąpił błąd podczas ładowania edytora.',
+    title: "Nowy artykuł",
+    subtitle: "Napisz artykuł, dodaj okładkę i zapisz.",
+    login: "Musisz się ",
+    loginLink: "zalogować",
+    loading: "Ładowanie…",
+    unauthorized: "Brak uprawnień – wymagany admin.",
+    backToList: "Powrót do artykułów",
+    goToLogin: "Przejdź do logowania",
+    editorLoading: "Trwa przygotowywanie edytora…",
+    errorLoading: "Wystąpił błąd podczas ładowania edytora.",
   },
 };
 
-/* ----------------------------- UI Components ---------------------------- */
 function EditorSkeleton({ hint }: { hint: string }) {
   return (
     <div
@@ -71,26 +68,17 @@ function EditorSkeleton({ hint }: { hint: string }) {
     >
       <span className="sr-only">{hint}</span>
 
-      {/* Title */}
       <div className="h-10 w-3/4 rounded-md bg-gray-100 dark:bg-zinc-800" />
       <div className="mt-2 h-3 w-24 rounded bg-gray-100 dark:bg-zinc-800" />
-
-      {/* Excerpt */}
       <div className="mt-4 h-20 w-full rounded-md bg-gray-100 dark:bg-zinc-800" />
 
-      {/* Short controls */}
       <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
         <div className="h-10 rounded-md bg-gray-100 dark:bg-zinc-800" />
         <div className="h-10 rounded-md bg-gray-100 dark:bg-zinc-800" />
       </div>
 
-      {/* Rich editor area */}
       <div className="mt-4 h-60 w-full rounded-lg border border-dashed border-gray-200 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-900" />
-
-      {/* Cover uploader */}
       <div className="mt-4 h-28 w-full rounded-lg border-2 border-dashed border-gray-200 dark:border-zinc-700" />
-
-      {/* Action bar */}
       <div className="mt-6 h-9 w-48 rounded-md bg-gray-100 dark:bg-zinc-800" />
     </div>
   );
@@ -127,22 +115,22 @@ function PageHeader({
 }
 
 function Notice({
-  tone = 'error',
+  tone = "error",
   children,
   actionHref,
   actionLabel,
 }: {
-  tone?: 'error' | 'info';
+  tone?: "error" | "info";
   children: React.ReactNode;
   actionHref?: string;
   actionLabel?: string;
 }) {
-  const base = 'flex items-start gap-3 rounded-lg border px-4 py-3 text-sm';
+  const base = "flex items-start gap-3 rounded-lg border px-4 py-3 text-sm";
   const toneMap = {
     error:
-      'border-red-200/60 dark:border-red-900/40 bg-red-50/60 dark:bg-red-950/30 text-red-800 dark:text-red-200',
+      "border-red-200/60 dark:border-red-900/40 bg-red-50/60 dark:bg-red-950/30 text-red-800 dark:text-red-200",
     info:
-      'border-blue-200/60 dark:border-blue-900/40 bg-blue-50/60 dark:bg-blue-950/30 text-blue-800 dark:text-blue-200',
+      "border-blue-200/60 dark:border-blue-900/40 bg-blue-50/60 dark:bg-blue-950/30 text-blue-800 dark:text-blue-200",
   } as const;
 
   return (
@@ -165,12 +153,10 @@ function Notice({
   );
 }
 
-/* --------------------------------- Page --------------------------------- */
 export default function NewArticlePage() {
-  // Locale from route params
   const params = useParams();
-  const raw = typeof params?.locale === 'string' ? params.locale : undefined;
-  const locale: Locale = isLocale(raw) ? raw : 'en';
+  const raw = typeof params?.locale === "string" ? params.locale : undefined;
+  const locale: Locale = isLocale(raw) ? raw : "en";
 
   const {
     title,
@@ -185,13 +171,9 @@ export default function NewArticlePage() {
   } = TEXTS[locale];
 
   const router = useRouter();
-
-  /* Session & roles */
   const { data: session, status } = useSession();
-  const role = session?.user?.role as 'admin' | 'editor' | 'viewer' | undefined;
 
-  // Loading session
-  if (status === 'loading') {
+  if (status === "loading") {
     return (
       <main className="mx-auto max-w-4xl px-4 py-10">
         <PageHeader
@@ -205,7 +187,6 @@ export default function NewArticlePage() {
     );
   }
 
-  // Not logged in
   if (!session) {
     return (
       <main className="mx-auto max-w-2xl px-4 py-10">
@@ -226,8 +207,8 @@ export default function NewArticlePage() {
     );
   }
 
-  // No permission
-  if (role !== 'admin' && role !== 'editor') {
+  // ✅ Admin only
+  if (session.user.role !== "admin") {
     return (
       <main className="mx-auto max-w-2xl px-4 py-10">
         <PageHeader
@@ -241,7 +222,6 @@ export default function NewArticlePage() {
     );
   }
 
-  // Page with editor
   return (
     <main className="mx-auto max-w-4xl px-4 py-8">
       <PageHeader
@@ -259,32 +239,26 @@ export default function NewArticlePage() {
           Editor
         </h2>
 
-        {/* container for the editor */}
         <div className="editor-host rounded-lg">
           <Suspense fallback={<EditorSkeleton hint={editorLoading} />}>
             <ArticleEditor
               mode="create"
               locale={locale}
-              // backend decides publishing; no page/status here
               defaultData={{
-                slug: '',
-                title: { en: '', pl: '' },
-                excerpt: { en: '', pl: '' },
-                content: { en: '', pl: '' },
-                categoryId: '',
+                slug: "",
+                title: { en: "", pl: "" },
+                excerpt: { en: "", pl: "" },
+                content: { en: "", pl: "" },
+                categoryId: "",
                 coverUrl: undefined,
                 meta: undefined,
               }}
-              onSaved={(slug: string) =>
-                router.push(`/${locale}/admin/articles/${slug}/edit`)
-              }
+              onSaved={(slug: string) => router.push(`/${locale}/admin/articles/${slug}/edit`)}
             />
           </Suspense>
         </div>
 
-        {/* Editor-specific global CSS overrides */}
         <style jsx global>{`
-          /* hide page/status fields */
           .editor-host [data-field='page'],
           .editor-host [data-field='status'],
           .editor-host [name='page'],
@@ -302,7 +276,6 @@ export default function NewArticlePage() {
             display: none !important;
           }
 
-          /* toolbar sticky inside editor */
           .editor-host {
             position: relative;
             overflow: visible;

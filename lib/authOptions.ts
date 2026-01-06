@@ -1,74 +1,104 @@
-// E:\trifuzja-mix\lib\authOptions.ts
-import type { NextAuthOptions } from "next-auth";
-import CredentialsProvider from "next-auth/providers/credentials";
-import { MongoDBAdapter } from "@next-auth/mongodb-adapter";
+// lib/authOptions.ts
+import type { NextAuthConfig } from "next-auth";
+import Credentials from "next-auth/providers/credentials";
+import { MongoDBAdapter } from "@auth/mongodb-adapter";
 import clientPromise from "@/types/mongodb";
+import type { ObjectId } from "mongodb";
 import * as bcrypt from "bcryptjs";
 import { z } from "zod";
+
+type Role = "admin";
+
+type DbAdminUser = {
+  _id: ObjectId;
+  email: string;
+  password: string;
+  name?: string | null;
+};
 
 const credsSchema = z.object({
   email: z.string().email(),
   password: z.string().min(6),
 });
 
-export const authOptions: NextAuthOptions = {
+function isRole(value: unknown): value is Role {
+  return value === "admin";
+}
+
+function getUserRole(user: unknown): Role | undefined {
+  if (typeof user !== "object" || user === null) return undefined;
+  if (!("role" in user)) return undefined;
+
+  const record = user as Record<string, unknown>;
+  return isRole(record.role) ? record.role : undefined;
+}
+
+export const authOptions: NextAuthConfig = {
+  // ✅ Fix for [auth][error] UntrustedHost on localhost
+  trustHost: process.env.NODE_ENV !== "production",
+
   adapter: MongoDBAdapter(clientPromise),
+
   providers: [
-    CredentialsProvider({
+    Credentials({
       name: "Credentials",
       credentials: {
         email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" },
       },
+
       async authorize(rawCreds) {
         const parsed = credsSchema.safeParse(rawCreds);
-        if (!parsed.success) throw new Error("البيانات غير صالحة");
+        if (!parsed.success) return null;
 
         const client = await clientPromise;
-        const users = client.db("trifuzja").collection("admin");
+        const users = client.db("trifuzja").collection<DbAdminUser>("admin");
 
         const user = await users.findOne({
           email: parsed.data.email.toLowerCase(),
         });
-        if (!user) throw new Error("المستخدم غير موجود");
+
+        if (!user) return null;
 
         const ok = await bcrypt.compare(parsed.data.password, user.password);
-        if (!ok) throw new Error("كلمة المرور غير صحيحة");
+        if (!ok) return null;
 
-        // تُطابق User بعد الـ augmentation
         return {
-          id: user._id.toString(),
+          id: user._id.toHexString(),
           email: user.email,
           name: user.name ?? null,
-          role: "admin",
+          role: "admin" as const,
         };
       },
     }),
   ],
-  session: { strategy: "jwt" },
-callbacks: {
-  async jwt({ token, user }) {
-    if (user) {
-      // id موجود في AdapterUser و User
-      if ('id' in user && typeof user.id === 'string') {
-        token.id = user.id;
-      }
-      // role موجودة فقط في User (بعد module augmentation)
-      if ('role' in user && typeof user.role === 'string') {
-        token.role = user.role;
-      }
-    }
-    return token;
-  },
 
-  async session({ session, token }) {
-    if (session.user) {
-      if (typeof token.id === 'string')  session.user.id   = token.id;
-      if (typeof token.role === 'string') session.user.role = token.role;
-    }
-    return session;
+  session: { strategy: "jwt" },
+
+  callbacks: {
+    async jwt({ token, user }) {
+      if (user) {
+        token.id = user.id;
+
+        const role = getUserRole(user);
+        if (role) token.role = role;
+      }
+
+      return token;
+    },
+
+    async session({ session, token }) {
+      if (session.user && typeof token.id === "string") {
+        session.user.id = token.id;
+
+        if (isRole(token.role)) {
+          session.user.role = token.role;
+        }
+      }
+
+      return session;
+    },
   },
-},
 
   pages: { signIn: "/login" },
   secret: process.env.NEXTAUTH_SECRET,

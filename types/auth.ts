@@ -1,29 +1,48 @@
-// E:\trifuzja-mix\types\auth.ts
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/authOptions'; // ⬅️ بدل مسار الراوت إلى lib
-import { NextResponse } from 'next/server';
+// types/auth.ts
+import { NextResponse } from "next/server";
+import { auth } from "@/auth";
 
-/**
- * تتحقق أنّ الجلسة موجودة وصلاحية المستخدم 'admin'.
- * ترمي خطأ إذا لم يكن كذلك.
- */
-export async function requireAdmin(): Promise<void> {
-  const session = await getServerSession(authOptions);
-  if (!session || session.user.role !== 'admin') {
-    throw new Error('Unauthorized');
-  }
+export type Role = "admin";
+
+export type RequireAdminResult =
+  | { ok: true }
+  | { ok: false; response: NextResponse };
+
+function isAdminRole(value: unknown): value is Role {
+  return value === "admin";
 }
 
-/**
- * تستخدم في Middleware/راوتات لحجب /admin/** لغير المصرح لهم.
- * ترجع Redirect لو لم يكن admin.
- */
-export async function checkAdminAccess(req: Request): Promise<NextResponse | null> {
-  const session = await getServerSession(authOptions);
-  const isAdmin = session?.user.role === 'admin';
-  if (!isAdmin) {
-    const url = new URL('/login', req.url);
-    return NextResponse.redirect(url);
+function getRole(session: unknown): Role | undefined {
+  if (typeof session !== "object" || session === null) return undefined;
+  if (!("user" in session)) return undefined;
+
+  const s = session as Record<string, unknown>;
+  const user = s.user;
+
+  if (typeof user !== "object" || user === null) return undefined;
+  if (!("role" in user)) return undefined;
+
+  const u = user as Record<string, unknown>;
+  return isAdminRole(u.role) ? u.role : undefined;
+}
+
+export async function requireAdmin(): Promise<RequireAdminResult> {
+  const session = await auth();
+
+  if (!session?.user) {
+    return {
+      ok: false,
+      response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+    };
   }
-  return null;
+
+  const role = getRole(session);
+  if (role !== "admin") {
+    return {
+      ok: false,
+      response: NextResponse.json({ error: "Forbidden" }, { status: 403 }),
+    };
+  }
+
+  return { ok: true };
 }
