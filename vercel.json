@@ -1,0 +1,9 @@
+{
+  "redirects": [
+    {
+      "source": "/(.*)",
+      "destination": "https://mensitiva.com/en/$1",
+      "permanent": true
+    }
+  ]
+}

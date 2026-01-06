@@ -20,7 +20,7 @@ const PROVIDER = {
   brandName: SITE_NAME,
   street: 'ul. Darzyborska 15B/7',
   cityZip: '61-303 Poznań',
-  email: 'contact@example.com', // ← بدّلها ببريدك الرسمي
+  email: 'mensitiva1@gmail.com', // ← بدّلها ببريدك الرسمي
 } as const;
 
 const i18n: Record<Locale, {

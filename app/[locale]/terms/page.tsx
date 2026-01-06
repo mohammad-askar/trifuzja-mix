@@ -16,7 +16,7 @@ const PROVIDER = {
   street: 'ul. Darzyborska 15B/7',
   city: 'Poznań',
   postalCode: '61-303',
-  email: 'contact@example.com', // ← حدّثه ببريدك الرسمي عند توفره
+  email: 'mensitiva1@gmail.com', // ← حدّثه ببريدك الرسمي عند توفره
 } as const;
 
 // أنواع صارمة للنصوص
