@@ -17,6 +17,19 @@ interface Props {
   switchLang: (l: Locale) => void;
 }
 
+/**
+ * SAFELY build a localized href.
+ * Prevents:
+ * - /undefined/...
+ * - //double-slashes
+ * - accidental bad concatenation
+ */
+function buildHref(locale: Locale | undefined, href: string) {
+  const safeLocale: Locale = locale === 'pl' || locale === 'en' ? locale : 'en';
+  const safeHref = href?.startsWith('/') ? href : `/${href ?? ''}`;
+  return `/${safeLocale}${safeHref}`.replace(/\/{2,}/g, '/');
+}
+
 export default function MobileNav({
   locale,
   navLinks,
@@ -32,7 +45,7 @@ export default function MobileNav({
       {navLinks.map(({ href, label }) => (
         <Link
           key={href}
-          href={`/${locale}${href}`}
+          href={buildHref(locale, href)}
           onClick={onNavigate}
           className="py-2"
         >

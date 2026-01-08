@@ -5,13 +5,17 @@ import { Home, FolderKanban, Newspaper } from 'lucide-react';
 
 type Locale = 'en' | 'pl';
 
-type PageProps = {
-  params: { locale: Locale };
-};
+function normalizeLocale(raw: unknown): Locale {
+  return raw === 'pl' || raw === 'en' ? raw : 'en';
+}
 
-/* ---------- Metadata ---------- */
-export function generateMetadata({ params }: PageProps): Metadata {
-  const { locale } = params;
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}): Promise<Metadata> {
+  const { locale: raw } = await params;
+  const locale = normalizeLocale(raw);
   const isPL = locale === 'pl';
 
   return {
@@ -25,9 +29,13 @@ export function generateMetadata({ params }: PageProps): Metadata {
   };
 }
 
-/** Admin dashboard (Server Component) */
-export default function AdminDashboard({ params }: PageProps) {
-  const { locale } = params;
+export default async function AdminDashboard({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}) {
+  const { locale: raw } = await params;
+  const locale = normalizeLocale(raw);
 
   return (
     <main className="min-h-[calc(100vh-64px)] flex items-center justify-center">
@@ -35,7 +43,6 @@ export default function AdminDashboard({ params }: PageProps) {
         <h1 className="text-3xl font-bold mb-8 text-center">Admin&nbsp;Dashboard</h1>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Categories */}
           <Link
             href={`/${locale}/admin/categories`}
             className="group overflow-hidden rounded-lg p-6 bg-gradient-to-br from-gray-800 to-gray-850 hover:from-blue-600/70 hover:to-blue-800/80 transition"
@@ -47,7 +54,6 @@ export default function AdminDashboard({ params }: PageProps) {
             </p>
           </Link>
 
-          {/* Articles */}
           <Link
             href={`/${locale}/admin/articles`}
             className="group overflow-hidden rounded-lg p-6 bg-gradient-to-br from-gray-800 to-gray-850 hover:from-emerald-600/70 hover:to-emerald-800/80 transition"
@@ -60,7 +66,6 @@ export default function AdminDashboard({ params }: PageProps) {
           </Link>
         </div>
 
-        {/* Back to site */}
         <div className="mt-10 text-center">
           <Link
             href={`/${locale}`}

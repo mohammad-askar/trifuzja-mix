@@ -3,6 +3,7 @@
 
 import Link from 'next/link';
 import { LogOut } from 'lucide-react';
+import type { ReactNode } from 'react';
 import LanguageSwitcher from './LanguageSwitcher';
 import type { Locale, NavLink } from '../Header';
 
@@ -10,10 +11,24 @@ interface Props {
   locale: Locale;
   navLinks: NavLink[];
   linkClass: (href: string) => string;
-  badgeForArticles: React.ReactNode;
+  badgeForArticles: ReactNode;
   isLoggedIn: boolean;
   tLogout: string;
   onSignOut: () => void;
+}
+
+/**
+ * SAFELY build a localized href.
+ * Prevents:
+ * - /undefined/...
+ * - //double-slashes
+ * - /en/en
+ */
+function buildHref(locale: Locale | undefined, href: string) {
+  const safeLocale: Locale = locale === 'pl' || locale === 'en' ? locale : 'en';
+  const safeHref = href?.startsWith('/') ? href : `/${href ?? ''}`;
+
+  return `/${safeLocale}${safeHref}`.replace(/\/{2,}/g, '/');
 }
 
 export default function DesktopNav({
@@ -28,7 +43,11 @@ export default function DesktopNav({
   return (
     <nav className="hidden sm:flex items-center gap-4 text-sm">
       {navLinks.map(({ href, label, icon: Icon }) => (
-        <Link key={label} href={`/${locale}${href}`} className={linkClass(href)}>
+        <Link
+          key={href}
+          href={buildHref(locale, href)}
+          className={linkClass(href)}
+        >
           <Icon className="w-4 h-4" />
           {label}
           {href === '/articles' && badgeForArticles}
@@ -37,6 +56,7 @@ export default function DesktopNav({
 
       {isLoggedIn && (
         <button
+          type="button"
           onClick={onSignOut}
           className="flex items-center gap-2 px-3 py-1 rounded-md transition
                      hover:bg-white/5 hover:text-blue-300

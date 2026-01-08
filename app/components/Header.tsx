@@ -20,34 +20,28 @@ interface HeaderProps {
 }
 
 export interface NavLink {
-  href: string; // ✅ locale-relative path: '/', '/articles', '/admin/dashboard', '/login'
+  href: string; // locale-relative path: '/', '/articles', '/admin/dashboard', '/login'
   label: string;
   icon: LucideIcon;
 }
 
 /* ---------- i18n ---------- */
 const T: Record<Locale, Record<string, string>> = {
-  en: {
-    home: 'Home',
-    articles: 'Articles',
-    login: 'Login',
-    logout: 'Logout',
-    dashboard: 'Dashboard',
-  },
-  pl: {
-    home: 'Strona główna',
-    articles: 'Artykuły',
-    login: 'Zaloguj',
-    logout: 'Wyloguj',
-    dashboard: 'Panel',
-  },
+  en: { home: 'Home', articles: 'Articles', login: 'Login', logout: 'Logout', dashboard: 'Dashboard' },
+  pl: { home: 'Strona główna', articles: 'Artykuły', login: 'Zaloguj', logout: 'Wyloguj', dashboard: 'Panel' },
 };
 
 function stripLocale(pathname: string): string {
   return pathname.replace(/^\/(en|pl)(?=\/|$)/, '') || '/';
 }
 
+function normalizeLocale(l: unknown): Locale {
+  return l === 'pl' || l === 'en' ? l : 'en';
+}
+
 export default function Header({ locale }: HeaderProps) {
+  const safeLocale = normalizeLocale(locale);
+
   const { data: session } = useSession();
   const pathname = usePathname();
   const search = useSearchParams();
@@ -101,9 +95,9 @@ export default function Header({ locale }: HeaderProps) {
     router.push(`/${l}${stripped === '/' ? '' : stripped}`);
   };
 
-  const t = T[locale];
+  const t = T[safeLocale];
 
-  /* ---------- nav links (✅ locale-relative; nav components will prefix with /{locale}) ---------- */
+  /* ---------- nav links (locale-relative; nav components will prefix with /{locale}) ---------- */
   const raw: (NavLink | false)[] = [
     { href: '/', label: t.home, icon: Home },
     { href: '/articles', label: t.articles, icon: Newspaper },
@@ -113,7 +107,7 @@ export default function Header({ locale }: HeaderProps) {
   const navLinks: NavLink[] = raw.filter((x): x is NavLink => x !== false);
 
   /* ---------- helpers ---------- */
-  const relPath = stripLocale(pathname); // '/', '/articles', '/admin/dashboard'
+  const relPath = stripLocale(pathname);
   const linkClass = (href: string) => {
     const active = href === '/' ? relPath === '/' : relPath.startsWith(href);
 
@@ -130,7 +124,7 @@ export default function Header({ locale }: HeaderProps) {
   ) : null;
 
   /* ---------- sign out ---------- */
-  const handleSignOut = () => signOut({ callbackUrl: `/${locale}` });
+  const handleSignOut = () => signOut({ callbackUrl: `/${safeLocale}` });
 
   return (
     <header
@@ -143,7 +137,7 @@ export default function Header({ locale }: HeaderProps) {
     >
       <div className="max-w-6xl mx-auto flex items-center justify-between px-4 py-3 h-16">
         {/* logo */}
-        <Link href={`/${locale}`} className="flex items-center gap-2 group">
+        <Link href={`/${safeLocale}`} className="flex items-center gap-2 group">
           <Image
             src="/images/logo.png"
             alt="Logo"
@@ -169,7 +163,7 @@ export default function Header({ locale }: HeaderProps) {
 
         {/* desktop nav */}
         <DesktopNav
-          locale={locale}
+          locale={safeLocale}
           navLinks={navLinks}
           linkClass={linkClass}
           badgeForArticles={badge}
@@ -187,7 +181,7 @@ export default function Header({ locale }: HeaderProps) {
           bg-gray-900/90 backdrop-blur px-4`}
       >
         <MobileNav
-          locale={locale}
+          locale={safeLocale}
           navLinks={navLinks}
           badgeForArticles={badge}
           isLoggedIn={!!session}

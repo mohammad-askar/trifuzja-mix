@@ -1,28 +1,32 @@
-// E:\trifuzja-mix\middleware.ts
-import { NextRequest, NextResponse } from "next/server";
-import { getToken } from "next-auth/jwt";
+import { NextRequest, NextResponse } from 'next/server';
+import { getToken } from 'next-auth/jwt';
 
-type Locale = "en" | "pl";
-const SUPPORTED_LOCALES: ReadonlySet<Locale> = new Set(["en", "pl"]);
+type Locale = 'en' | 'pl';
+
+const SUPPORTED_LOCALES: ReadonlySet<Locale> = new Set(['en', 'pl']);
 
 function extractTopSegment(pathname: string): string | null {
   const m = pathname.match(/^\/([^/]+)/);
   return m ? m[1] : null;
 }
 
+function normalizeLocale(raw: string | null): Locale {
+  return raw === 'pl' || raw === 'en' ? raw : 'en';
+}
+
 function pickLocale(req: NextRequest): Locale {
-  const header = (req.headers.get("accept-language") ?? "").toLowerCase();
-  return header.includes("pl") ? "pl" : "en";
+  const header = (req.headers.get('accept-language') ?? '').toLowerCase();
+  return header.includes('pl') ? 'pl' : 'en';
 }
 
 function isStaticOrSeoPath(pathname: string): boolean {
-  if (pathname === "/" || pathname.startsWith("/sitemap")) return true;
-  if (pathname.startsWith("/.well-known")) return true;
+  if (pathname === '/' || pathname.startsWith('/sitemap')) return true;
+  if (pathname.startsWith('/.well-known')) return true;
 
   if (
-    pathname.startsWith("/images") ||
-    pathname.startsWith("/flags") ||
-    pathname.startsWith("/upload")
+    pathname.startsWith('/images') ||
+    pathname.startsWith('/flags') ||
+    pathname.startsWith('/upload')
   ) {
     return true;
   }
@@ -30,22 +34,21 @@ function isStaticOrSeoPath(pathname: string): boolean {
   // Google verification file
   if (/^\/google[a-z0-9]+\.html$/i.test(pathname)) return true;
 
-  // Allow auth + any API routes
-  if (pathname.startsWith("/api")) return true;
+  // Allow auth + API routes
+  if (pathname.startsWith('/api')) return true;
 
   // Next internals
-  if (pathname.startsWith("/_next")) return true;
+  if (pathname.startsWith('/_next')) return true;
 
   return false;
 }
 
 function isAdminPath(pathname: string): boolean {
-  if (pathname === "/admin") return true;
   return /^\/(en|pl)\/admin(\/|$)/.test(pathname);
 }
 
 export const config = {
-  matcher: ["/((?!_next|api|.*\\..*).*)"],
+  matcher: ['/((?!_next|api|.*\\..*).*)'],
 };
 
 export default async function proxy(req: NextRequest): Promise<NextResponse> {
@@ -68,7 +71,7 @@ export default async function proxy(req: NextRequest): Promise<NextResponse> {
     return NextResponse.redirect(url, 308);
   }
 
-  // 3) admin guard (Admin-only: just require token)
+  // 3) admin guard (require auth token)
   if (isAdminPath(pathname)) {
     const token = await getToken({
       req,
@@ -76,7 +79,7 @@ export default async function proxy(req: NextRequest): Promise<NextResponse> {
     });
 
     if (!token) {
-      const locale = (extractTopSegment(pathname) as Locale) ?? "en";
+      const locale = normalizeLocale(extractTopSegment(pathname));
       const url = req.nextUrl.clone();
       url.pathname = `/${locale}/login`;
       return NextResponse.redirect(url, 307);

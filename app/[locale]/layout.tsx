@@ -1,19 +1,22 @@
 // app/[locale]/layout.tsx
+import type { ReactNode } from 'react';
 import Header from '@/app/components/Header';
 import { Footer } from '../components/Footer';
-import type { ReactNode } from 'react';
 
 type Locale = 'en' | 'pl';
 
 interface LocaleLayoutProps {
   children: ReactNode;
-  // ملاحظة: في Next 15 params أصبحت Promise
-  params: Promise<{ locale: string }>;
+  params: Promise<{ locale: string }>; // ✅ Promise in your Next 16 setup
+}
+
+function normalizeLocale(raw: unknown): Locale {
+  return raw === 'pl' || raw === 'en' ? raw : 'en';
 }
 
 export default async function LocaleLayout({ children, params }: LocaleLayoutProps) {
-  const { locale: raw } = await params;           // ✅ ننتظر params
-  const locale: Locale = raw === 'pl' ? 'pl' : 'en';
+  const { locale: raw } = await params; // ✅ unwrap Promise
+  const locale = normalizeLocale(raw);
 
   return (
     <>
