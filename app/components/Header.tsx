@@ -14,19 +14,33 @@ import MobileNav from './header/MobileNav';
 
 /* ---------- Types ---------- */
 export type Locale = 'en' | 'pl';
+
 interface HeaderProps {
   locale: Locale;
 }
+
 export interface NavLink {
-  href: string; // ✅ full path including locale
+  href: string; // ✅ locale-relative path: '/', '/articles', '/admin/dashboard', '/login'
   label: string;
   icon: LucideIcon;
 }
 
 /* ---------- i18n ---------- */
 const T: Record<Locale, Record<string, string>> = {
-  en: { home: 'Home', articles: 'Articles', login: 'Login', logout: 'Logout', dashboard: 'Dashboard' },
-  pl: { home: 'Strona główna', articles: 'Artykuły', login: 'Zaloguj', logout: 'Wyloguj', dashboard: 'Panel' },
+  en: {
+    home: 'Home',
+    articles: 'Articles',
+    login: 'Login',
+    logout: 'Logout',
+    dashboard: 'Dashboard',
+  },
+  pl: {
+    home: 'Strona główna',
+    articles: 'Artykuły',
+    login: 'Zaloguj',
+    logout: 'Wyloguj',
+    dashboard: 'Panel',
+  },
 };
 
 function stripLocale(pathname: string): string {
@@ -41,6 +55,7 @@ export default function Header({ locale }: HeaderProps) {
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+
   const menuBtnRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -51,7 +66,7 @@ export default function Header({ locale }: HeaderProps) {
     return () => window.removeEventListener('scroll', h);
   }, []);
 
-  /* ---------- click-outside (للقائمة الجوال) ---------- */
+  /* ---------- click-outside (mobile menu) ---------- */
   useEffect(() => {
     const close = (e: MouseEvent) => {
       const target = e.target as Node | null;
@@ -59,6 +74,7 @@ export default function Header({ locale }: HeaderProps) {
 
       const menuEl = menuRef.current;
       const btnEl = menuBtnRef.current;
+
       const clickedInsideMenu = !!menuEl && menuEl.contains(target);
       const clickedButton = !!btnEl && btnEl.contains(target);
 
@@ -81,27 +97,25 @@ export default function Header({ locale }: HeaderProps) {
   /* ---------- language switch ---------- */
   const switchLang = (l: Locale) => {
     localStorage.setItem('preferredLocale', l);
-    const stripped = stripLocale(pathname);
+    const stripped = stripLocale(pathname); // '/', '/articles', ...
     router.push(`/${l}${stripped === '/' ? '' : stripped}`);
   };
 
   const t = T[locale];
 
-  /* ---------- nav links (✅ FIXED: include locale) ---------- */
+  /* ---------- nav links (✅ locale-relative; nav components will prefix with /{locale}) ---------- */
   const raw: (NavLink | false)[] = [
-    { href: `/${locale}`, label: t.home, icon: Home },
-    { href: `/${locale}/articles`, label: t.articles, icon: Newspaper },
-    session ? { href: `/${locale}/admin/dashboard`, label: t.dashboard, icon: User } : false,
-    !session ? { href: `/${locale}/login`, label: t.login, icon: LogIn } : false,
+    { href: '/', label: t.home, icon: Home },
+    { href: '/articles', label: t.articles, icon: Newspaper },
+    session ? { href: '/admin/dashboard', label: t.dashboard, icon: User } : false,
+    !session ? { href: '/login', label: t.login, icon: LogIn } : false,
   ];
   const navLinks: NavLink[] = raw.filter((x): x is NavLink => x !== false);
 
   /* ---------- helpers ---------- */
-  const relPath = stripLocale(pathname); // مثل: / , /articles , /admin/dashboard
+  const relPath = stripLocale(pathname); // '/', '/articles', '/admin/dashboard'
   const linkClass = (href: string) => {
-    // href full: /en/articles => strip => /articles
-    const hrefRel = stripLocale(href);
-    const active = hrefRel === '/' ? relPath === '/' : relPath.startsWith(hrefRel);
+    const active = href === '/' ? relPath === '/' : relPath.startsWith(href);
 
     return `flex items-center gap-2 px-3 py-1 rounded-md transition
       ${active ? 'bg-white/10 text-blue-400' : 'hover:bg-white/5 hover:text-blue-300'}`;
@@ -121,7 +135,11 @@ export default function Header({ locale }: HeaderProps) {
   return (
     <header
       className={`fixed inset-x-0 top-0 z-50 h-16 backdrop-blur border-b transition-colors
-        ${scrolled ? 'bg-gray-900/90 text-gray-300 border-gray-700 shadow-md' : 'bg-gray-900/90 text-gray-300 border-transparent'}`}
+        ${
+          scrolled
+            ? 'bg-gray-900/90 text-gray-300 border-gray-700 shadow-md'
+            : 'bg-gray-900/90 text-gray-300 border-transparent'
+        }`}
     >
       <div className="max-w-6xl mx-auto flex items-center justify-between px-4 py-3 h-16">
         {/* logo */}
@@ -141,6 +159,7 @@ export default function Header({ locale }: HeaderProps) {
         {/* mobile toggle */}
         <button
           ref={menuBtnRef}
+          type="button"
           onClick={() => setMenuOpen((v) => !v)}
           aria-label="Toggle menu"
           className="sm:hidden text-white"

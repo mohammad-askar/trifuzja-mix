@@ -17,14 +17,21 @@ interface Props {
 }
 
 export default function DesktopNav({
-  locale, navLinks, linkClass, badgeForArticles, isLoggedIn, tLogout, onSignOut,
+  locale,
+  navLinks,
+  linkClass,
+  badgeForArticles,
+  isLoggedIn,
+  tLogout,
+  onSignOut,
 }: Props) {
   return (
     <nav className="hidden sm:flex items-center gap-4 text-sm">
-      {navLinks.map(({href,label,icon:Icon})=>(
+      {navLinks.map(({ href, label, icon: Icon }) => (
         <Link key={label} href={`/${locale}${href}`} className={linkClass(href)}>
-          <Icon className="w-4 h-4"/>{label}
-          {href==='/articles' && badgeForArticles}
+          <Icon className="w-4 h-4" />
+          {label}
+          {href === '/articles' && badgeForArticles}
         </Link>
       ))}
 
@@ -40,7 +47,6 @@ export default function DesktopNav({
         </button>
       )}
 
-      {/* language switcher */}
       <LanguageSwitcher locale={locale} />
     </nav>
   );
