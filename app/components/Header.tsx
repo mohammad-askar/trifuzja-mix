@@ -18,7 +18,7 @@ interface HeaderProps {
   locale: Locale;
 }
 export interface NavLink {
-  href: string;
+  href: string; // ✅ full path including locale
   label: string;
   icon: LucideIcon;
 }
@@ -28,6 +28,10 @@ const T: Record<Locale, Record<string, string>> = {
   en: { home: 'Home', articles: 'Articles', login: 'Login', logout: 'Logout', dashboard: 'Dashboard' },
   pl: { home: 'Strona główna', articles: 'Artykuły', login: 'Zaloguj', logout: 'Wyloguj', dashboard: 'Panel' },
 };
+
+function stripLocale(pathname: string): string {
+  return pathname.replace(/^\/(en|pl)(?=\/|$)/, '') || '/';
+}
 
 export default function Header({ locale }: HeaderProps) {
   const { data: session } = useSession();
@@ -77,31 +81,34 @@ export default function Header({ locale }: HeaderProps) {
   /* ---------- language switch ---------- */
   const switchLang = (l: Locale) => {
     localStorage.setItem('preferredLocale', l);
-    const stripped = pathname.replace(/^\/(en|pl)/, '');
-    router.push(`/${l}${stripped || ''}`);
+    const stripped = stripLocale(pathname);
+    router.push(`/${l}${stripped === '/' ? '' : stripped}`);
   };
 
   const t = T[locale];
 
-  /* ---------- nav links ---------- */
+  /* ---------- nav links (✅ FIXED: include locale) ---------- */
   const raw: (NavLink | false)[] = [
-    { href: '', label: t.home, icon: Home },
-    { href: '/articles', label: t.articles, icon: Newspaper },
-    session ? { href: '/admin/dashboard', label: t.dashboard, icon: User } : false,
-    !session ? { href: '/login', label: t.login, icon: LogIn } : false,
+    { href: `/${locale}`, label: t.home, icon: Home },
+    { href: `/${locale}/articles`, label: t.articles, icon: Newspaper },
+    session ? { href: `/${locale}/admin/dashboard`, label: t.dashboard, icon: User } : false,
+    !session ? { href: `/${locale}/login`, label: t.login, icon: LogIn } : false,
   ];
   const navLinks: NavLink[] = raw.filter((x): x is NavLink => x !== false);
 
   /* ---------- helpers ---------- */
-  const relPath = pathname.replace(`/${locale}`, '') || '/';
+  const relPath = stripLocale(pathname); // مثل: / , /articles , /admin/dashboard
   const linkClass = (href: string) => {
-    const active = href === '' ? relPath === '/' : relPath.startsWith(href);
+    // href full: /en/articles => strip => /articles
+    const hrefRel = stripLocale(href);
+    const active = hrefRel === '/' ? relPath === '/' : relPath.startsWith(hrefRel);
+
     return `flex items-center gap-2 px-3 py-1 rounded-md transition
       ${active ? 'bg-white/10 text-blue-400' : 'hover:bg-white/5 hover:text-blue-300'}`;
   };
 
   /* ---------- current page badge (optional) ---------- */
-  const currentPage = search.get('page'); // health | diy | travel | null
+  const currentPage = search.get('page');
   const badge = currentPage ? (
     <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded bg-blue-700 uppercase">
       {currentPage}
