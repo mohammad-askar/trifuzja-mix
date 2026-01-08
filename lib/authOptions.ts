@@ -34,8 +34,10 @@ function getUserRole(user: unknown): Role | undefined {
 }
 
 export const authOptions: NextAuthConfig = {
-  // ✅ Fix for [auth][error] UntrustedHost on localhost
-  trustHost: process.env.NODE_ENV !== "production",
+  // ✅ Fix UntrustedHost (dev + prod via env)
+  trustHost:
+    process.env.AUTH_TRUST_HOST === "true" ||
+    process.env.NODE_ENV !== "production",
 
   adapter: MongoDBAdapter(clientPromise),
 
@@ -83,7 +85,6 @@ export const authOptions: NextAuthConfig = {
         const role = getUserRole(user);
         if (role) token.role = role;
       }
-
       return token;
     },
 
@@ -95,11 +96,12 @@ export const authOptions: NextAuthConfig = {
           session.user.role = token.role;
         }
       }
-
       return session;
     },
   },
 
   pages: { signIn: "/login" },
-  secret: process.env.NEXTAUTH_SECRET,
+
+  // ✅ v5 env support
+  secret: process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET,
 };
