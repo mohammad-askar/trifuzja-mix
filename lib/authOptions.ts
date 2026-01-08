@@ -34,19 +34,10 @@ function getUserRole(user: unknown): Role | undefined {
 }
 
 export const authOptions: NextAuthConfig = {
-  /**
-   * ✅ Fix UntrustedHost
-   * - Local/dev: allowed
-   * - Prod/Vercel: enable via AUTH_TRUST_HOST=true
-   */
   trustHost:
     process.env.AUTH_TRUST_HOST === "true" ||
     process.env.NODE_ENV !== "production",
 
-  /**
-   * ✅ Secret (Auth.js v5 prefers AUTH_SECRET)
-   * Keep it stable across deployments.
-   */
   secret: process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET,
 
   adapter: MongoDBAdapter(clientPromise),
@@ -91,7 +82,6 @@ export const authOptions: NextAuthConfig = {
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id;
-
         const role = getUserRole(user);
         if (role) token.role = role;
       }
@@ -109,11 +99,4 @@ export const authOptions: NextAuthConfig = {
       return session;
     },
   },
-
-  /**
-   * ✅ IMPORTANT with locales:
-   * Your login page is /en/login
-   * If you keep /login here you'll get weird redirects.
-   */
-  pages: { signIn: "/en/login" },
 };
