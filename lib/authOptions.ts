@@ -7,7 +7,6 @@ import type { ObjectId } from "mongodb";
 import * as bcrypt from "bcryptjs";
 import { z } from "zod";
 
-
 type DbAdminUser = {
   _id: ObjectId;
   email: string;
@@ -25,7 +24,8 @@ export const authOptions: NextAuthConfig = {
     process.env.AUTH_TRUST_HOST === "true" ||
     process.env.NODE_ENV !== "production",
 
-  secret: process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET,
+  // ✅ IMPORTANT: use ONE secret only (avoid redirect loops on Vercel)
+  secret: process.env.AUTH_SECRET,
 
   adapter: MongoDBAdapter(clientPromise),
 
@@ -69,7 +69,7 @@ export const authOptions: NextAuthConfig = {
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id;
-        token.role = "admin"; // ✅ Admin-only system
+        token.role = "admin";
       }
       return token;
     },
@@ -77,7 +77,7 @@ export const authOptions: NextAuthConfig = {
     async session({ session, token }) {
       if (session.user && typeof token.id === "string") {
         session.user.id = token.id;
-        session.user.role = "admin"; // ✅ Admin-only system
+        session.user.role = "admin";
       }
       return session;
     },
