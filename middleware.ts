@@ -1,12 +1,8 @@
 // E:\trifuzja-mix\middleware.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { getToken } from 'next-auth/jwt';
-import type { JWT } from 'next-auth/jwt';
 
 type Locale = 'en' | 'pl';
-type Role = 'admin';
-
-type AdminJWT = JWT & { role?: Role };
 
 const SUPPORTED_LOCALES: ReadonlySet<Locale> = new Set(['en', 'pl']);
 
@@ -28,9 +24,8 @@ function isStaticOrSeoPath(pathname: string): boolean {
   if (pathname === '/' || pathname.startsWith('/sitemap')) return true;
   if (pathname.startsWith('/.well-known')) return true;
 
-  // ✅ IMPORTANT: allow login/auth pages to avoid redirect loops
+  // ✅ allow login page to avoid redirect loops
   if (/^\/(en|pl)\/login(\/|$)/.test(pathname)) return true;
-  if (/^\/(en|pl)\/auth(\/|$)/.test(pathname)) return true;
 
   if (
     pathname.startsWith('/images') ||
@@ -51,10 +46,6 @@ function isAdminPath(pathname: string): boolean {
   return /^\/(en|pl)\/admin(\/|$)/.test(pathname);
 }
 
-function isAdminToken(token: JWT | null): token is AdminJWT {
-  return !!token && token.role === 'admin';
-}
-
 export const config = {
   matcher: ['/((?!_next|api|.*\\..*).*)'],
 };
@@ -62,7 +53,6 @@ export const config = {
 export default async function middleware(req: NextRequest): Promise<NextResponse> {
   const { pathname } = req.nextUrl;
 
-  // 1) let static/seo/api paths pass
   if (isStaticOrSeoPath(pathname)) {
     return NextResponse.next();
   }
@@ -74,7 +64,7 @@ export default async function middleware(req: NextRequest): Promise<NextResponse
     return NextResponse.redirect(url, 308);
   }
 
-  // 2) locale redirect if not prefixed
+  // ✅ locale redirect if not prefixed
   const first = extractTopSegment(pathname);
   const hasSupportedLocale =
     first !== null && SUPPORTED_LOCALES.has(first as Locale);
@@ -86,14 +76,14 @@ export default async function middleware(req: NextRequest): Promise<NextResponse
     return NextResponse.redirect(url, 308);
   }
 
-  // 3) admin guard (must be admin)
+  // ✅ admin guard: require auth token (Admin-only system)
   if (isAdminPath(pathname)) {
     const token = await getToken({
       req,
       secret: process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET,
     });
 
-    if (!isAdminToken(token)) {
+    if (!token) {
       const locale = normalizeLocale(extractTopSegment(pathname));
       const url = req.nextUrl.clone();
       url.pathname = `/${locale}/login`;

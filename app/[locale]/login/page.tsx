@@ -1,20 +1,15 @@
-import { auth } from "@/auth";
-import { redirect } from "next/navigation";
 import AdminLoginClient from "./AdminLoginClient";
 
 type Locale = "en" | "pl";
 
 export default async function LoginPage({
-  params,
 }: {
-  params: { locale: Locale };
+  params: Promise<{ locale: Locale }>;
 }) {
-  const session = await auth();
+  // ❌ لا auth()
+  // ❌ لا redirect
+  // ❌ لا getToken
 
-  // ✅ إذا مسجل دخول، لا تعرض صفحة login أبداً
-  if (session?.user) {
-    redirect(`/${params.locale}/admin/dashboard`);
-  }
-
+  // ✅ middleware فقط هو المسؤول عن الحماية
   return <AdminLoginClient />;
 }

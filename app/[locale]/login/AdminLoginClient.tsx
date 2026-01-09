@@ -1,3 +1,4 @@
+//E:\trifuzja-mix\app\[locale]\login\AdminLoginClient.tsx
 'use client';
 
 import { useState } from 'react';
@@ -44,8 +45,13 @@ const TEXT = {
   },
 } as const;
 
+function isLocale(v: unknown): v is Locale {
+  return v === 'en' || v === 'pl';
+}
+
 export default function AdminLoginClient() {
-  const { locale } = useParams() as { locale: Locale };
+  const params = useParams();
+  const locale: Locale = isLocale(params?.locale) ? params.locale : 'en';
   const t = TEXT[locale] ?? TEXT.en;
 
   const [email, setEmail] = useState<string>('');
@@ -81,13 +87,11 @@ export default function AdminLoginClient() {
     setLoad(true);
 
     try {
-      const callbackUrl = `/${locale}/admin/dashboard`;
-
+      // ✅ IMPORTANT: do not pass callbackUrl when redirect:false
       const res: SignInResponse | undefined = await signIn('credentials', {
         redirect: false,
         email,
         password,
-        callbackUrl,
       });
 
       setLoad(false);
@@ -103,7 +107,9 @@ export default function AdminLoginClient() {
       }
 
       toast.success(t.success);
-      window.location.assign(res.url ?? callbackUrl);
+
+      // ✅ Go directly to dashboard
+      window.location.assign(`/${locale}/admin/dashboard`);
     } catch {
       setLoad(false);
       toast.error(t.unknown);
