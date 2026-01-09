@@ -5,14 +5,14 @@ import { Home, FolderKanban, Newspaper } from 'lucide-react';
 
 type Locale = 'en' | 'pl';
 
-function normalizeLocale(raw: unknown): Locale {
+function normalizeLocale(raw: string): Locale {
   return raw === 'pl' || raw === 'en' ? raw : 'en';
 }
 
 export async function generateMetadata({
   params,
 }: {
-  params: Promise<{ locale: string }>;
+  params: Promise<{ locale: Locale }>;
 }): Promise<Metadata> {
   const { locale: raw } = await params;
   const locale = normalizeLocale(raw);
@@ -32,7 +32,7 @@ export async function generateMetadata({
 export default async function AdminDashboard({
   params,
 }: {
-  params: Promise<{ locale: string }>;
+  params: Promise<{ locale: Locale }>;
 }) {
   const { locale: raw } = await params;
   const locale = normalizeLocale(raw);

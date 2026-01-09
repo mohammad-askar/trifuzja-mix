@@ -16,5 +16,12 @@ export async function requireAdmin(): Promise<RequireAdminResult> {
     };
   }
 
+  if (session.user.role !== "admin") {
+    return {
+      ok: false,
+      response: NextResponse.json({ error: "Forbidden" }, { status: 403 }),
+    };
+  }
+
   return { ok: true };
 }

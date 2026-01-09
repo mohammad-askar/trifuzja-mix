@@ -7,7 +7,6 @@ import type { ObjectId } from "mongodb";
 import * as bcrypt from "bcryptjs";
 import { z } from "zod";
 
-type Role = "admin";
 
 type DbAdminUser = {
   _id: ObjectId;
@@ -20,18 +19,6 @@ const credsSchema = z.object({
   email: z.string().email(),
   password: z.string().min(6),
 });
-
-function isRole(value: unknown): value is Role {
-  return value === "admin";
-}
-
-function getUserRole(user: unknown): Role | undefined {
-  if (typeof user !== "object" || user === null) return undefined;
-  if (!("role" in user)) return undefined;
-
-  const record = user as Record<string, unknown>;
-  return isRole(record.role) ? record.role : undefined;
-}
 
 export const authOptions: NextAuthConfig = {
   trustHost:
@@ -82,8 +69,7 @@ export const authOptions: NextAuthConfig = {
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id;
-        const role = getUserRole(user);
-        if (role) token.role = role;
+        token.role = "admin"; // ✅ Admin-only system
       }
       return token;
     },
@@ -91,10 +77,7 @@ export const authOptions: NextAuthConfig = {
     async session({ session, token }) {
       if (session.user && typeof token.id === "string") {
         session.user.id = token.id;
-
-        if (isRole(token.role)) {
-          session.user.role = token.role;
-        }
+        session.user.role = "admin"; // ✅ Admin-only system
       }
       return session;
     },

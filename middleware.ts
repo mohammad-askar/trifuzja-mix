@@ -1,7 +1,12 @@
+// E:\trifuzja-mix\middleware.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { getToken } from 'next-auth/jwt';
+import type { JWT } from 'next-auth/jwt';
 
 type Locale = 'en' | 'pl';
+type Role = 'admin';
+
+type AdminJWT = JWT & { role?: Role };
 
 const SUPPORTED_LOCALES: ReadonlySet<Locale> = new Set(['en', 'pl']);
 
@@ -23,6 +28,10 @@ function isStaticOrSeoPath(pathname: string): boolean {
   if (pathname === '/' || pathname.startsWith('/sitemap')) return true;
   if (pathname.startsWith('/.well-known')) return true;
 
+  // ✅ IMPORTANT: allow login/auth pages to avoid redirect loops
+  if (/^\/(en|pl)\/login(\/|$)/.test(pathname)) return true;
+  if (/^\/(en|pl)\/auth(\/|$)/.test(pathname)) return true;
+
   if (
     pathname.startsWith('/images') ||
     pathname.startsWith('/flags') ||
@@ -42,6 +51,10 @@ function isAdminPath(pathname: string): boolean {
   return /^\/(en|pl)\/admin(\/|$)/.test(pathname);
 }
 
+function isAdminToken(token: JWT | null): token is AdminJWT {
+  return !!token && token.role === 'admin';
+}
+
 export const config = {
   matcher: ['/((?!_next|api|.*\\..*).*)'],
 };
@@ -54,7 +67,7 @@ export default async function middleware(req: NextRequest): Promise<NextResponse
     return NextResponse.next();
   }
 
-  // ✅ 1.5) fix bad cached urls: /en/undefined/...  or /pl/undefined/...
+  // ✅ fix bad cached urls: /en/undefined/... or /pl/undefined/...
   if (/^\/(en|pl)\/undefined(\/|$)/.test(pathname)) {
     const url = req.nextUrl.clone();
     url.pathname = pathname.replace(/^\/(en|pl)\/undefined/, '/$1');
@@ -63,7 +76,8 @@ export default async function middleware(req: NextRequest): Promise<NextResponse
 
   // 2) locale redirect if not prefixed
   const first = extractTopSegment(pathname);
-  const hasSupportedLocale = first !== null && SUPPORTED_LOCALES.has(first as Locale);
+  const hasSupportedLocale =
+    first !== null && SUPPORTED_LOCALES.has(first as Locale);
 
   if (!hasSupportedLocale) {
     const url = req.nextUrl.clone();
@@ -72,14 +86,14 @@ export default async function middleware(req: NextRequest): Promise<NextResponse
     return NextResponse.redirect(url, 308);
   }
 
-  // 3) admin guard (require auth token)
+  // 3) admin guard (must be admin)
   if (isAdminPath(pathname)) {
     const token = await getToken({
       req,
       secret: process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET,
     });
 
-    if (!token) {
+    if (!isAdminToken(token)) {
       const locale = normalizeLocale(extractTopSegment(pathname));
       const url = req.nextUrl.clone();
       url.pathname = `/${locale}/login`;

@@ -1,26 +1,25 @@
-// E:\trifuzja-mix\types\next-auth.d.ts
+// types/next-auth.d.ts
 import type { DefaultSession } from "next-auth";
 
-/** النظام عندك Admin فقط */
 export type Role = "admin";
 
 declare module "next-auth" {
   interface Session {
     user: DefaultSession["user"] & {
       id: string;
-      role?: Role; // ✅ اختياري (مهم جداً)
+      role: Role; // ✅ غير اختياري
     };
   }
 
   interface User {
     id: string;
-    role?: Role; // ✅ اختياري
+    role: Role; // ✅ غير اختياري
   }
 }
 
 declare module "next-auth/jwt" {
   interface JWT {
     id?: string;
-    role?: Role;
+    role: Role; // ✅ غير اختياري
   }
 }
