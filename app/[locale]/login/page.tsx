@@ -1,3 +1,4 @@
+//E:\trifuzja-mix\app\[locale]\login\page.tsx
 import AdminLoginClient from "./AdminLoginClient";
 
 type Locale = "en" | "pl";

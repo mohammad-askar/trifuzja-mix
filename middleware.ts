@@ -1,10 +1,11 @@
-// E:\trifuzja-mix\middleware.ts
-import { NextRequest, NextResponse } from 'next/server';
-import { getToken } from 'next-auth/jwt';
+// middleware.ts
+import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
+import { auth } from "@/auth";
 
-type Locale = 'en' | 'pl';
+type Locale = "en" | "pl";
 
-const SUPPORTED_LOCALES: ReadonlySet<Locale> = new Set(['en', 'pl']);
+const SUPPORTED_LOCALES: ReadonlySet<Locale> = new Set(["en", "pl"]);
 
 function extractTopSegment(pathname: string): string | null {
   const m = pathname.match(/^\/([^/]+)/);
@@ -12,32 +13,33 @@ function extractTopSegment(pathname: string): string | null {
 }
 
 function normalizeLocale(raw: string | null): Locale {
-  return raw === 'pl' || raw === 'en' ? raw : 'en';
+  return raw === "pl" || raw === "en" ? raw : "en";
 }
 
 function pickLocale(req: NextRequest): Locale {
-  const header = (req.headers.get('accept-language') ?? '').toLowerCase();
-  return header.includes('pl') ? 'pl' : 'en';
+  const header = (req.headers.get("accept-language") ?? "").toLowerCase();
+  return header.includes("pl") ? "pl" : "en";
 }
 
 function isStaticOrSeoPath(pathname: string): boolean {
-  if (pathname === '/' || pathname.startsWith('/sitemap')) return true;
-  if (pathname.startsWith('/.well-known')) return true;
+  if (pathname === "/" || pathname.startsWith("/sitemap")) return true;
+  if (pathname.startsWith("/.well-known")) return true;
 
-  // ✅ allow login page to avoid redirect loops
+  // ✅ allow login page
   if (/^\/(en|pl)\/login(\/|$)/.test(pathname)) return true;
 
+  // ✅ allow auth endpoints
+  if (pathname.startsWith("/api/auth")) return true;
+
   if (
-    pathname.startsWith('/images') ||
-    pathname.startsWith('/flags') ||
-    pathname.startsWith('/upload')
-  ) {
-    return true;
-  }
+    pathname.startsWith("/images") ||
+    pathname.startsWith("/flags") ||
+    pathname.startsWith("/upload")
+  ) return true;
 
   if (/^\/google[a-z0-9]+\.html$/i.test(pathname)) return true;
-  if (pathname.startsWith('/api')) return true;
-  if (pathname.startsWith('/_next')) return true;
+  if (pathname.startsWith("/api")) return true;
+  if (pathname.startsWith("/_next")) return true;
 
   return false;
 }
@@ -47,27 +49,24 @@ function isAdminPath(pathname: string): boolean {
 }
 
 export const config = {
-  matcher: ['/((?!_next|api|.*\\..*).*)'],
+  matcher: ["/((?!_next|api|.*\\..*).*)"],
 };
 
-export default async function middleware(req: NextRequest): Promise<NextResponse> {
+export default auth((req) => {
   const { pathname } = req.nextUrl;
 
-  if (isStaticOrSeoPath(pathname)) {
-    return NextResponse.next();
-  }
+  if (isStaticOrSeoPath(pathname)) return NextResponse.next();
 
-  // ✅ fix bad cached urls: /en/undefined/... or /pl/undefined/...
+  // fix /en/undefined/...
   if (/^\/(en|pl)\/undefined(\/|$)/.test(pathname)) {
     const url = req.nextUrl.clone();
-    url.pathname = pathname.replace(/^\/(en|pl)\/undefined/, '/$1');
+    url.pathname = pathname.replace(/^\/(en|pl)\/undefined/, "/$1");
     return NextResponse.redirect(url, 308);
   }
 
-  // ✅ locale redirect if not prefixed
+  // locale redirect if missing
   const first = extractTopSegment(pathname);
-  const hasSupportedLocale =
-    first !== null && SUPPORTED_LOCALES.has(first as Locale);
+  const hasSupportedLocale = first !== null && SUPPORTED_LOCALES.has(first as Locale);
 
   if (!hasSupportedLocale) {
     const url = req.nextUrl.clone();
@@ -76,20 +75,13 @@ export default async function middleware(req: NextRequest): Promise<NextResponse
     return NextResponse.redirect(url, 308);
   }
 
-  // ✅ admin guard: require auth token (Admin-only system)
-  if (isAdminPath(pathname)) {
-    const token = await getToken({
-      req,
-      secret: process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET,
-    });
-
-    if (!token) {
-      const locale = normalizeLocale(extractTopSegment(pathname));
-      const url = req.nextUrl.clone();
-      url.pathname = `/${locale}/login`;
-      return NextResponse.redirect(url, 307);
-    }
+  // ✅ admin guard: use req.auth (v5)
+  if (isAdminPath(pathname) && !req.auth) {
+    const locale = normalizeLocale(extractTopSegment(pathname));
+    const url = req.nextUrl.clone();
+    url.pathname = `/${locale}/login`;
+    return NextResponse.redirect(url, 307);
   }
 
   return NextResponse.next();
-}
+});
