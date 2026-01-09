@@ -31,13 +31,8 @@ function isStaticOrSeoPath(pathname: string): boolean {
     return true;
   }
 
-  // Google verification file
   if (/^\/google[a-z0-9]+\.html$/i.test(pathname)) return true;
-
-  // Allow auth + API routes
   if (pathname.startsWith('/api')) return true;
-
-  // Next internals
   if (pathname.startsWith('/_next')) return true;
 
   return false;
@@ -51,7 +46,7 @@ export const config = {
   matcher: ['/((?!_next|api|.*\\..*).*)'],
 };
 
-export default async function proxy(req: NextRequest): Promise<NextResponse> {
+export default async function middleware(req: NextRequest): Promise<NextResponse> {
   const { pathname } = req.nextUrl;
 
   // 1) let static/seo/api paths pass
@@ -59,10 +54,16 @@ export default async function proxy(req: NextRequest): Promise<NextResponse> {
     return NextResponse.next();
   }
 
+  // ✅ 1.5) fix bad cached urls: /en/undefined/...  or /pl/undefined/...
+  if (/^\/(en|pl)\/undefined(\/|$)/.test(pathname)) {
+    const url = req.nextUrl.clone();
+    url.pathname = pathname.replace(/^\/(en|pl)\/undefined/, '/$1');
+    return NextResponse.redirect(url, 308);
+  }
+
   // 2) locale redirect if not prefixed
   const first = extractTopSegment(pathname);
-  const hasSupportedLocale =
-    first !== null && SUPPORTED_LOCALES.has(first as Locale);
+  const hasSupportedLocale = first !== null && SUPPORTED_LOCALES.has(first as Locale);
 
   if (!hasSupportedLocale) {
     const url = req.nextUrl.clone();
